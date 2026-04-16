@@ -1,0 +1,28 @@
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (FoodProductTypeViewSet, FoodProductViewSet,
+                    MacronutrientsViewSet, MineralsViewSet,
+                    VitaminsViewSet, OtherNutrientsViewSet, FatAcidsViewSet, AllergenListView, ProductAllergensView,
+                    ConsumerProfileViewSet, WorkActivityGroupViewSet, ConsumerGoalViewSet, ProfileTargetsView,
+                    NutrientDictionaryViewSet, RecommendationsView, FoodProductSubtypeViewSet)
+
+router = DefaultRouter()
+router.register(r"types", FoodProductTypeViewSet)
+router.register(r"subtypes", FoodProductSubtypeViewSet)
+router.register(r"products", FoodProductViewSet)
+router.register(r"macros", MacronutrientsViewSet)
+router.register(r"minerals", MineralsViewSet)
+router.register(r"vitamins", VitaminsViewSet)
+router.register(r"other", OtherNutrientsViewSet)
+router.register(r"fat-acids", FatAcidsViewSet)
+router.register(r"consumer/profiles", ConsumerProfileViewSet, basename="consumer-profiles")
+router.register(r"work-activity-groups", WorkActivityGroupViewSet, basename="work-activity-groups")
+router.register(r"allergens", AllergenListView, basename="allergens")
+router.register(r"consumer/goals", ConsumerGoalViewSet, basename="consumer-goals")
+router.register(r"nutrients-dictionary", NutrientDictionaryViewSet, basename="nutrients-dictionary")
+
+urlpatterns = [
+    path("", include(router.urls)),
+    path("consumer/profiles/<int:profile_id>/targets/", ProfileTargetsView.as_view(), name="profile-targets"),
+    path("consumer/recommendations/", RecommendationsView.as_view()),
+]

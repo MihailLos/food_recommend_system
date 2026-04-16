@@ -1,0 +1,42 @@
+# =========================
+# macOS / editors / system
+# =========================
+.DS_Store
+.vscode/
+.idea/
+
+# =========================
+# Backend (Django)
+# =========================
+food_backend/.venv/
+food_backend/**/__pycache__/
+food_backend/**/*.pyc
+food_backend/**/*.pyo
+food_backend/**/*.pyd
+
+food_backend/.env
+food_backend/.env.*
+food_backend/db.sqlite3
+
+# если появятся логи
+food_backend/*.log
+
+# =========================
+# Frontend (React)
+# =========================
+food-frontend/node_modules/
+food-frontend/build/
+food-frontend/dist/
+
+food-frontend/.env
+food-frontend/.env.*
+
+# если появятся логи
+food-frontend/npm-debug.log*
+food-frontend/yarn-debug.log*
+food-frontend/yarn-error.log*
+
+# =========================
+# Common
+# =========================
+*.log
