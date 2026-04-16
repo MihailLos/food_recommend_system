@@ -9,6 +9,8 @@ from catalog.models import (
 )
 from catalog.utils.energy_calc import calculate_tdee_for_profile
 
+ADULT_SODIUM_NORM_MG_DAY = 1300.0
+
 
 def _find_macro_norm_row(profile: ConsumerProfile) -> MacronutrientsNormsMR:
     age = int(profile.age_years)
@@ -71,6 +73,9 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
     mr_protein_g_day = float(macro_row.protein_g)
     mr_fat_g_day = float(macro_row.fats_g)
     mr_carb_g_day = float(macro_row.carbs_g)
+    mr_protein_pct = (mr_protein_g_day * 4.0 / mr_energy_kcal_day * 100.0) if mr_energy_kcal_day > 0 else 0.0
+    mr_fat_pct = (mr_fat_g_day * 9.0 / mr_energy_kcal_day * 100.0) if mr_energy_kcal_day > 0 else 0.0
+    mr_carb_pct = (mr_carb_g_day * 4.0 / mr_energy_kcal_day * 100.0) if mr_energy_kcal_day > 0 else 0.0
 
     energy_delta_kcal = (
         float(goal.energy_delta_kcal)
@@ -85,7 +90,17 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
         and goal.carb_pct is not None
     )
 
-    target_energy_kcal_day = mr_energy_kcal_day + energy_delta_kcal
+    target_energy_pre_limit_kcal_day = tdee_kcal_day + energy_delta_kcal
+    calorie_limit_kcal = (
+        float(profile.calorie_limit_kcal)
+        if profile.calorie_limit_kcal is not None
+        else None
+    )
+    if calorie_limit_kcal is not None:
+        target_energy_kcal_day = min(target_energy_pre_limit_kcal_day, calorie_limit_kcal)
+    else:
+        target_energy_kcal_day = target_energy_pre_limit_kcal_day
+    target_energy_kcal_day = max(target_energy_kcal_day, 0.0)
 
     if manual:
         protein_pct = float(goal.protein_pct)
@@ -98,13 +113,13 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
 
         macros_mode = "manual"
     else:
-        target_protein_g_day = mr_protein_g_day
-        target_fat_g_day = mr_fat_g_day
-        target_carb_g_day = mr_carb_g_day
+        protein_pct = mr_protein_pct
+        fat_pct = mr_fat_pct
+        carb_pct = mr_carb_pct
 
-        protein_pct = (target_protein_g_day * 4.0 / target_energy_kcal_day * 100.0) if target_energy_kcal_day > 0 else 0.0
-        fat_pct = (target_fat_g_day * 9.0 / target_energy_kcal_day * 100.0) if target_energy_kcal_day > 0 else 0.0
-        carb_pct = (target_carb_g_day * 4.0 / target_energy_kcal_day * 100.0) if target_energy_kcal_day > 0 else 0.0
+        target_protein_g_day = round(target_energy_kcal_day * protein_pct / 100.0 / 4.0, 2)
+        target_fat_g_day = round(target_energy_kcal_day * fat_pct / 100.0 / 9.0, 2)
+        target_carb_g_day = round(target_energy_kcal_day * carb_pct / 100.0 / 4.0, 2)
 
         macros_mode = "mr_table"
 
@@ -117,6 +132,7 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
         "goal_id": goal.id if goal else None,
         "goal_type": goal.goal_type if goal else None,
         "energy_delta_kcal": energy_delta_kcal,
+        "calorie_limit_kcal": calorie_limit_kcal,
 
         "energy_calc": {
             "bmr_kcal_day": round(float(res.bmr_kcal_day), 2),
@@ -131,9 +147,13 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
             "carb_g_day": round(mr_carb_g_day, 2),
             "dietary_fibers_min_g_day": float(macro_row.dietary_fibers_min_g),
             "dietary_fibers_max_g_day": float(macro_row.dietary_fibers_max_g),
+            "protein_pct": round(mr_protein_pct, 2),
+            "fat_pct": round(mr_fat_pct, 2),
+            "carb_pct": round(mr_carb_pct, 2),
         },
 
         "target_energy_kcal_day": round(target_energy_kcal_day, 2),
+        "target_energy_base_kcal_day": round(target_energy_pre_limit_kcal_day, 2),
         "macros_mode": macros_mode,
 
         "macros_pct": {
@@ -153,14 +173,27 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
             "max": float(macro_row.dietary_fibers_max_g),
         },
 
+        "target_fat_acids_day": {
+            "nlc_g": round(target_energy_kcal_day * 0.10 / 9.0, 2),
+        },
+
         "target_vitamins_day": vitamin_norms,
-        "target_minerals_day": mineral_norms,
+        "target_minerals_day": {
+            **mineral_norms,
+            "na_mg": float(
+                mineral_norms.get("Na")
+                or mineral_norms.get("Натрий")
+                or ADULT_SODIUM_NORM_MG_DAY
+            ),
+        },
 
         "debug": {
             "work_group_id": profile.work_group_id,
             "sex": profile.sex,
             "age_years": int(profile.age_years),
             "macro_norm_row_id": macro_row.id,
+            "target_energy_source": "tdee_plus_goal_delta",
+            "target_energy_limited_by_profile_cap": calorie_limit_kcal is not None and target_energy_kcal_day < target_energy_pre_limit_kcal_day,
         },
     }
 

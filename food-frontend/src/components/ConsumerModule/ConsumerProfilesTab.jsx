@@ -640,7 +640,7 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
               >
                 <option value="">— выбрать —</option>
                 {workGroups
-                  .filter(g => !(form.sex === "female" && String(g.id) === "5")) // женская V группа скрыта
+                  .filter(g => String(g.id) !== "5" || Number(form.age_years) >= 65)
                   .map(g => (
                     <option key={g.id} value={g.id}>
                       {g.name} (КФА: {form.sex === "male" ? g.kfa_male : g.kfa_female})
@@ -648,6 +648,11 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
                   ))}
               </select>
             </div>
+            {Number(form.age_years) < 65 && (
+              <div style={{ fontSize: 12, color: "#666", marginTop: -2 }}>
+                Группа труда V доступна только для профилей 65+.
+              </div>
+            )}
 
             <div style={row}>
               <label>Есть несовершеннолетние дети</label>

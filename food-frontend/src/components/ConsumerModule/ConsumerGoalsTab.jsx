@@ -5,6 +5,7 @@ import {
   updateGoal,
   deleteGoal,
   setActiveGoal,
+  fetchProfile,
   fetchProfileTargets,
   fetchGoalPreferences,
   replaceGoalPreferences,
@@ -46,6 +47,7 @@ export default function ConsumerGoalsTab({ profileId }) {
 
   const [goals, setGoals] = useState([]);
   const [selectedGoalId, setSelectedGoalId] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [targets, setTargets] = useState(null);
   const [nutrients, setNutrients] = useState([]);
   const [prefs, setPrefs] = useState([]); // [{ nutrient_code, direction, priority }]
@@ -88,6 +90,9 @@ export default function ConsumerGoalsTab({ profileId }) {
     setLoading(true);
     setError("");
     try {
+      const profileData = await fetchProfile(profileId);
+      setProfile(profileData);
+
       const gRaw = await fetchGoals(profileId);
       const g = normalizeList(gRaw);
       setGoals(g);
@@ -232,7 +237,11 @@ export default function ConsumerGoalsTab({ profileId }) {
 
   const refreshTargets = async () => {
     if (!profileId) return;
-    const t = await fetchProfileTargets(profileId);
+    const [profileData, t] = await Promise.all([
+      fetchProfile(profileId),
+      fetchProfileTargets(profileId),
+    ]);
+    setProfile(profileData);
     setTargets(t);
   };
 
@@ -387,6 +396,8 @@ export default function ConsumerGoalsTab({ profileId }) {
     : targets?.macros_mode === "mr_table"
       ? "по нормативам МР"
       : targets?.macros_mode || "—";
+  const bmiValue = Number(profile?.bmi);
+  const isObesityProfile = Number.isFinite(bmiValue) && bmiValue >= 30;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 16 }}>
@@ -530,11 +541,20 @@ export default function ConsumerGoalsTab({ profileId }) {
           <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
             {form.goal_type === "lose_weight" && (
                 <>
+                <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: isObesityProfile ? -500 : -250 })}>
+                  {isObesityProfile ? "-500" : "-250"}
+                </button>
                 <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: -500 })}>-500</button>
-                <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: -600 })}>-600</button>
-                <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: -700 })}>-700</button>
+                {isObesityProfile && (
+                  <>
+                  <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: -600 })}>-600</button>
+                  <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: -700 })}>-700</button>
+                  </>
+                )}
                 <div style={{ fontSize: 12, color: "#666", alignSelf: "center" }}>
-                    Рекомендуемый дефицит 500–700 ккал/сут (клин. рек. «Ожирение»).
+                    {isObesityProfile
+                      ? "Для профилей с ИМТ >= 30 можно ориентироваться на типовой дефицит 500–700 ккал/сут по клиническим рекомендациям по ожирению."
+                      : "Диапазон 500–700 ккал/сут из клинических рекомендаций по ожирению применяют при ИМТ >= 30; в остальных случаях дефицит подбирают индивидуально."}
                 </div>
                 </>
             )}
@@ -738,6 +758,12 @@ export default function ConsumerGoalsTab({ profileId }) {
               <div>TDEE, ккал/сут</div>
               <div>{targets?.energy_calc?.tdee_kcal_day ?? "—"}</div>
 
+              <div>База целевой энергии, ккал/сут</div>
+              <div>{targets?.target_energy_base_kcal_day ?? "—"}</div>
+
+              <div>Лимит профиля, ккал/сут</div>
+              <div>{targets?.calorie_limit_kcal ?? "—"}</div>
+
               <div>Целевая энергия, ккал/сут</div>
               <div>{targets.target_energy_kcal_day}</div>
 
@@ -766,6 +792,20 @@ export default function ConsumerGoalsTab({ profileId }) {
                   <div>{targets.target_macros_g_day.fat_g}</div>
                   <div>Углеводы, г/сут</div>
                   <div>{targets.target_macros_g_day.carb_g}</div>
+                </>
+              )}
+
+              {targets.target_minerals_day && (
+                <>
+                  <div>Натрий, мг/сут</div>
+                  <div>{targets.target_minerals_day.na_mg ?? "—"}</div>
+                </>
+              )}
+
+              {targets.target_fat_acids_day && (
+                <>
+                  <div>НЖК, г/сут</div>
+                  <div>{targets.target_fat_acids_day.nlc_g ?? "—"}</div>
                 </>
               )}
             </div>

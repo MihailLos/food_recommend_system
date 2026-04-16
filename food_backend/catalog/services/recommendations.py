@@ -11,6 +11,9 @@ from catalog.models import FoodProducts, ConsumerProfile, ConsumerGoal, GoalNutr
 from catalog.models import NutrientStats, Cart, CartItem
 from catalog.utils.targets import compute_targets_for_profile
 
+ADULT_SODIUM_NORM_MG_DAY = 1300.0
+SALT_EQUIVALENT_FACTOR = 2.5
+
 @dataclass
 class ColorResult:
     color: str  # green|yellow|red|blocked
@@ -443,7 +446,8 @@ def build_targets_day_from_profile_targets(targets: Dict) -> Dict[str, float]:
     minerals = targets.get("target_minerals_day") or {}
     na = minerals.get("Na") or minerals.get("Натрий") or minerals.get("na_mg")
 
-    out["na_mg_day"] = float(na) if na not in (None, "", 0) else 2000.0
+    out["na_mg_day"] = float(na) if na not in (None, "", 0) else ADULT_SODIUM_NORM_MG_DAY
+    out["salt_eq_g_day"] = round((out["na_mg_day"] / 1000.0) * SALT_EQUIVALENT_FACTOR, 2)
 
     # насыщенные жирные кислоты: пока fallback, если в targets их ещё нет
     nlc = targets.get("target_fat_acids_day", {}).get("nlc_g")
@@ -476,8 +480,10 @@ def recommend(
     if mode == "cart":
         if not cart_id:
             raise ValueError("cart is required for mode=cart")
-        cart = get_object_or_404(Cart, pk=cart_id, userid=profile.userid)
-        ids = list(CartItem.objects.filter(cartid=cart.id).values_list("foodproductid", flat=True))
+        if profile.user_id is None:
+            raise ValueError("cart mode requires a profile linked to a user")
+        cart = get_object_or_404(Cart, pk=cart_id, user=profile.user_id)
+        ids = list(CartItem.objects.filter(cart=cart.id).values_list("food_product_id", flat=True))
         qs = FoodProducts.objects.filter(id__in=ids)
     else:
         qs = FoodProducts.objects.all()
@@ -580,6 +586,7 @@ def recommend(
                     "fats_g": targets_day.get("fat_g_day"),
                     "carbs_g": targets_day.get("carb_g_day"),
                     "na_mg": targets_day.get("na_mg_day"),
+                    "salt_eq_g": targets_day.get("salt_eq_g_day"),
                     "nlc_g": targets_day.get("nlc_g_day"),
                 },
                 "targets_meta": {

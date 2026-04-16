@@ -246,17 +246,16 @@ class ConsumerProfileSerializer(serializers.ModelSerializer):
         Мини-валидации MVP:
         - взрослый профиль: age >= 18
         - sex: male/female (модель уже ограничивает choices)
-        - если sex=female, work_group=5 запрещаем (на всякий)
+        - группа труда V доступна только для профилей 65+
         """
-        sex = attrs.get("sex", getattr(self.instance, "sex", None))
         age = attrs.get("age_years", getattr(self.instance, "age_years", None))
         wg = attrs.get("work_group", getattr(self.instance, "work_group", None))
 
         if age is not None and int(age) < 18:
             raise serializers.ValidationError({"age_years": "Профиль взрослого: возраст должен быть >= 18."})
 
-        if sex == "female" and wg is not None and int(wg.id) == 5:
-            raise serializers.ValidationError({"work_group_id": "Для женщин 5 группа труда недоступна."})
+        if wg is not None and int(wg.id) == 5 and age is not None and int(age) < 65:
+            raise serializers.ValidationError({"work_group_id": "Группа труда V доступна только для профилей 65+."})
 
         return attrs
 
@@ -373,6 +372,38 @@ class ConsumerGoalSerializer(serializers.ModelSerializer):
             validated_data["energy_delta_kcal"] = 0
 
         return validated_data
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        protein_pct = attrs.get("protein_pct", getattr(self.instance, "protein_pct", None))
+        fat_pct = attrs.get("fat_pct", getattr(self.instance, "fat_pct", None))
+        carb_pct = attrs.get("carb_pct", getattr(self.instance, "carb_pct", None))
+
+        provided = [protein_pct, fat_pct, carb_pct]
+        provided_count = sum(v is not None for v in provided)
+
+        if provided_count not in (0, 3):
+            raise serializers.ValidationError(
+                "Для ручного режима нужно задать все три процента: белки, жиры и углеводы."
+            )
+
+        if provided_count == 3:
+            values = {
+                "protein_pct": float(protein_pct),
+                "fat_pct": float(fat_pct),
+                "carb_pct": float(carb_pct),
+            }
+
+            for field, value in values.items():
+                if value < 0 or value > 100:
+                    raise serializers.ValidationError({field: "Значение должно быть в диапазоне 0..100."})
+
+            total = sum(values.values())
+            if abs(total - 100.0) > 0.01:
+                raise serializers.ValidationError("Сумма процентов БЖУ должна быть равна 100.")
+
+        return attrs
 
     def create(self, validated_data):
         validated_data = self._apply_defaults(validated_data)

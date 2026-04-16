@@ -255,7 +255,7 @@ function renderHumanText(item) {
 
   if (color === "red") {
     if (naShare != null && naShare > 0.25) {
-      warning = `Главное ограничение: в 100 г продукта очень много соли — около ${Math.round(naShare * 100)}% от дневной нормы.`;
+      warning = `Главное ограничение: в 100 г продукта высокая солевая нагрузка по натрию — около ${Math.round(naShare * 100)}% от дневной нормы натрия.`;
     } else if (fatsShare != null && fatsShare > 0.25) {
       warning = `Главное ограничение: в 100 г продукта много жиров — около ${Math.round(fatsShare * 100)}% от дневной нормы.`;
     } else if (carbsShare != null && carbsShare > 0.25) {
@@ -301,7 +301,7 @@ function renderHumanText(item) {
     conclusion = "Такой продукт удобно использовать как более безопасный выбор для повседневного питания.";
   }
 
-  const extra = `По жирам нагрузка ${fatsLevel}, по углеводам — ${carbsLevel}, по соли — ${saltLevel}.`;
+  const extra = `По жирам нагрузка ${fatsLevel}, по углеводам — ${carbsLevel}, по натрию/солевой нагрузке — ${saltLevel}.`;
   const lines = [title, reason, norms, warning, extra, conclusion].filter(Boolean);
 
   return (
@@ -507,7 +507,7 @@ function getAlternativeReason(currentItem, altItem) {
     typeof altNa === "number" &&
     altNa + 0.1 < currentNa
   ) {
-    return "Меньше соли";
+    return "Ниже натрий и солевая нагрузка";
   }
 
   if (
