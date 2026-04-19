@@ -135,7 +135,10 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
   return (
     <div style={overlay} onClick={onClose}>
       <div style={modal} onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0 }}>Добавить продукт</h2>
+        <h2 style={{ marginTop: 0 }}>Добавить продукт локально</h2>
+        <div style={{ marginBottom: 12, color: "#666", fontSize: 13 }}>
+          Запись сохранится только в локальной базе браузера и не изменит общий серверный справочник.
+        </div>
 
         <div style={row}>
           <label>Название</label>

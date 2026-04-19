@@ -9,7 +9,6 @@ import SortControl from "../components/SortControl";
 import AddProductModal from "../components/AddProductModal";
 import NutritionCalculatorModal from "../components/NutritionCalculatorModal";
 import { ALL_COLUMNS } from "../config/column";
-import { catalogDb } from "../db/catalogDb";
 import { exportJsonToExcel } from "../utils/exportExcel";
 
 /** утилиты */
@@ -63,34 +62,9 @@ export default function ProductsPage() {
   // поиск по серверу как раньше
   const [search, setSearch] = useState("");
   const debounced = useDebounce(search, 300);
-  const { loading, error, items, saveProduct, addProductLocally, clearAll, reloadOriginal } = useCatalog(debounced);
-  const [allTypes, setAllTypes] = useState([]);
+  const { loading, error, items, allItems, saveProduct, addProductLocally, clearAll, reloadOriginal } = useCatalog(debounced);
   const [calcOpen, setCalcOpen] = useState(false);
-  const [allProducts, setAllProducts] = useState([]);
   const [subtypeFilters, setSubtypeFilters] = useState({});
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const all = await catalogDb.products.toArray();
-      if (!cancelled) setAllProducts(all);
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const all = await catalogDb.products.toArray();
-      if (cancelled) return;
-      const map = new Map();
-      for (const r of all) if (r.typeId) map.set(r.typeId, r.typeName || `Тип #${r.typeId}`);
-      const fullTypes = Array.from(map.entries()).map(([id, name]) => ({ id, name }))
-        .sort((a,b)=>String(a.name).localeCompare(String(b.name),"ru"));
-      setAllTypes(fullTypes);
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   // для модалки
   const [addOpen, setAddOpen] = useState(false);
@@ -101,6 +75,12 @@ export default function ProductsPage() {
     for (const r of items) if (r.typeId) map.set(r.typeId, r.typeName || `Тип #${r.typeId}`);
     return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a,b)=>String(a.name).localeCompare(String(b.name), "ru"));
   }, [items]);
+
+  const allTypes = useMemo(() => {
+    const map = new Map();
+    for (const r of allItems) if (r.typeId) map.set(r.typeId, r.typeName || `Тип #${r.typeId}`);
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a,b)=>String(a.name).localeCompare(String(b.name), "ru"));
+  }, [allItems]);
 
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     const saved = localStorage.getItem("sidebarOpen");
@@ -289,7 +269,7 @@ export default function ProductsPage() {
               {sidebarOpen ? "Скрыть параметры" : "Дополнительные параметры"}
             </button>
 
-            <button className="btn" onClick={() => setAddOpen(true)}>Добавить продукт в базу</button>
+            <button className="btn" onClick={() => setAddOpen(true)}>Добавить локально</button>
             <button
               className="btn btn-danger"
               onClick={async () => {
@@ -298,7 +278,7 @@ export default function ProductsPage() {
                 }
               }}
             >
-              Очистить базу
+              Очистить локальную базу
             </button>
             <button className="btn" onClick={reloadOriginal}>Загрузить исходную базу</button>
             <button type="button" onClick={handleExportCatalog} className="btn">📄 Экспорт таблицы в Excel</button>
@@ -402,13 +382,6 @@ export default function ProductsPage() {
 
                   {/* Подтипы этого типа, с учётом фильтра */}
                   {visibleSubgroups.map(({ subtypeId, subtypeName, items }) => {
-                    const ids = items.map(x => x.id);
-                    const uniq = new Set(ids);
-
-                    if (ids.length !== uniq.size) {
-                      console.warn("DUPLICATES INSIDE SUBGROUP", { typeKey, subtypeId, subtypeName, total: ids.length, uniq: uniq.size });
-                    }
-
                     return (
                       <div key={`${typeKey}::${subtypeId ?? subtypeName}`} style={{ marginLeft: 16, marginBottom: 16 }}>
                         <GroupSection
@@ -430,12 +403,12 @@ export default function ProductsPage() {
               onSubmit={addProductLocally}
               types={allTypes}
             />
-            <NutritionCalculatorModal
-              open={calcOpen}
-              onClose={() => setCalcOpen(false)}
-              allProducts={allProducts}
-              defaultGrams={100}
-            />
+	            <NutritionCalculatorModal
+	              open={calcOpen}
+	              onClose={() => setCalcOpen(false)}
+	              allProducts={allItems}
+	              defaultGrams={100}
+	            />
             {groups.length === 0 && (
               <div style={{ color: "#666" }}>Ничего не найдено по текущим фильтрам</div>
             )}

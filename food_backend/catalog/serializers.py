@@ -90,21 +90,31 @@ class FoodProductSerializer(serializers.ModelSerializer):
     allergens = serializers.SerializerMethodField()
     is_allergen = serializers.SerializerMethodField()
 
+    def _get_allergens_cached(self, obj):
+        if not hasattr(obj, "_catalog_allergens_cache"):
+            obj._catalog_allergens_cache = get_allergens_for_product(obj)
+        return obj._catalog_allergens_cache
+
+    def _get_child_rule_cached(self, obj):
+        if not hasattr(obj, "_catalog_child_rule_cache"):
+            obj._catalog_child_rule_cache = pick_not_child_rule(obj)
+        return obj._catalog_child_rule_cache
+
     def get_allergens(self, obj):
-        return get_allergens_for_product(obj)
+        return self._get_allergens_cached(obj)
 
     def get_is_allergen(self, obj):
-        return len(get_allergens_for_product(obj)) > 0
+        return len(self._get_allergens_cached(obj)) > 0
     
     is_child_allowed = serializers.SerializerMethodField()
     child_restriction_level = serializers.SerializerMethodField()
 
     def get_is_child_allowed(self, obj):
-        rule, level = pick_not_child_rule(obj)
+        rule, level = self._get_child_rule_cached(obj)
         return rule is None  # если есть запись в Not_Child_Products → нельзя
 
     def get_child_restriction_level(self, obj):
-        rule, level = pick_not_child_rule(obj)
+        rule, level = self._get_child_rule_cached(obj)
         return level if rule else None
     
     type = FoodProductTypeSerializer(read_only=True)

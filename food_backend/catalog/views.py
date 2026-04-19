@@ -22,7 +22,6 @@ from catalog.utils.energy_calc import calculate_bmi, calculate_tdee_for_profile
 from catalog.utils.targets import compute_targets_for_profile
 
 import hashlib, json
-from django.db.models import Max, Count
 
 from rest_framework import status
 from rest_framework import generics
@@ -116,6 +115,12 @@ class FoodProductViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="processed")
     def processed(self, request, pk=None):
         processing_id = request.query_params.get("processing_id")
+        if processing_id in (None, "", "none", "null"):
+            return Response({"detail": "processing_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            processing_id_int = int(processing_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "processing_id must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
 
         weight = request.query_params.get("weight")
         weight_g = None
@@ -128,7 +133,10 @@ class FoodProductViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "weight must be a number"}, status=status.HTTP_400_BAD_REQUEST)
 
         product = self.get_object()
-        data = compute_processed_nutrients(product, int(processing_id), weight_g=weight_g)
+        rule, _scope = pick_processing_rule(product, processing_id_int)
+        if rule is None:
+            return Response({"detail": "processing rule not found for this product"}, status=status.HTTP_400_BAD_REQUEST)
+        data = compute_processed_nutrients(product, processing_id_int, weight_g=weight_g)
         return Response(data)
     
     @action(detail=False, methods=["get"], url_path="export", pagination_class=None)
@@ -146,10 +154,9 @@ class FoodProductViewSet(viewsets.ModelViewSet):
         qs = self.filter_queryset(qs).distinct()
         data = FoodProductSerializer(qs, many=True).data
 
-        # Простая версия каталога.
-        # Если нет updated_at — используем count + max(id) как суррогат версии.
-        agg = qs.aggregate(n=Count("id"), max_id=Max("id"))
-        version_seed = json.dumps({"n": agg["n"], "max_id": agg["max_id"]}, sort_keys=True)
+        # Версия зависит от содержимого экспорта, поэтому меняется при правках нутриентов
+        # без изменения текущей схемы БД.
+        version_seed = json.dumps(data, sort_keys=True, ensure_ascii=False, default=str)
         version = hashlib.sha256(version_seed.encode("utf-8")).hexdigest()[:12]
 
         # Можно положить версию в заголовок и в тело.

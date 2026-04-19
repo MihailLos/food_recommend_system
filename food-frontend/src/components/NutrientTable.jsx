@@ -131,16 +131,16 @@ export default function NutrientTable({ items, columns, onSaveRow = async () => 
               <tr key={r.id}>
                 {/* ячейка с кнопками */}
                 <td style={{ ...td, minWidth: 140 }}>
-                  {!isEdit ? (
-                    <button type="button" style={btn} onClick={() => startEdit(r)} title="Изменить">
-                      ✏️ Изменить
-                    </button>
-                  ) : (
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button type="button" style={btn} onClick={saveEdit} title="Сохранить">💾 Сохранить</button>
-                      <button type="button" style={btn} onClick={cancelEdit} title="Отмена">↩︎ Отмена</button>
-                    </div>
-                  )}
+	                  {!isEdit ? (
+	                    <button type="button" style={btn} onClick={() => startEdit(r)} title="Изменить локально">
+	                      ✏️ Изменить локально
+	                    </button>
+	                  ) : (
+	                    <div style={{ display: "flex", gap: 6 }}>
+	                      <button type="button" style={btn} onClick={saveEdit} title="Сохранить локально">💾 Сохранить локально</button>
+	                      <button type="button" style={btn} onClick={cancelEdit} title="Отмена">↩︎ Отмена</button>
+	                    </div>
+	                  )}
                 </td>
 
                 {/* колонка «Продукт» */}

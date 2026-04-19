@@ -49,7 +49,7 @@ class FoodProducts(models.Model):
 
     @property
     def type(self) -> FoodProductTypes:
-        return self.subtype.product_type
+        return self.subtype.product_type if self.subtype_id and self.subtype else None
 
 
 class Macronutrients(models.Model):

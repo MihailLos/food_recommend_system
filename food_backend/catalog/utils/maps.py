@@ -21,10 +21,10 @@ NUTRIENT_MAP = {
 
     # Vitamins
     "Beta_Carotene": ("vitamins", "beta_carotene_mg_field"),
-    "B1": ("vitamins", "b1_mg_field"),
-    "B2": ("vitamins", "b2_mg_field"),
-    "PP": ("vitamins", "pp_mg_field"),
-    "C": ("vitamins", "c_mg_field"),
+    "B1": ("vitamins", "b1_vitamin_mg_field"),
+    "B2": ("vitamins", "b2_vitamin_mg_field"),
+    "PP": ("vitamins", "pp_vitamin_mg_field"),
+    "C": ("vitamins", "c_vitamin_mg_field"),
 }
 
 RULE_FIELD_MAP = {

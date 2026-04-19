@@ -16,7 +16,6 @@ export default function NutritionCalculatorModal({
   onClose,
   allProducts,          // массив ВСЕХ продуктов (не отфильтрованных)
   defaultGrams = 100,
-  onApplyToAll,         // (multiplier:number)=>void
 }) {
   const [typeId, setTypeId] = useState("");
   const [subtypeId, setSubtypeId] = useState("");
@@ -25,6 +24,8 @@ export default function NutritionCalculatorModal({
   const [processingId, setProcessingId] = useState("none");
   const [processingOptions, setProcessingOptions] = useState([]);
   const [processed, setProcessed] = useState(null);
+  const [processingLoading, setProcessingLoading] = useState(false);
+  const [processingError, setProcessingError] = useState("");
 
   const [grams, setGrams] = useState(String(defaultGrams));
 
@@ -80,11 +81,20 @@ export default function NutritionCalculatorModal({
       setProcessingOptions([]);
       setProcessingId("none");
       setProcessed(null);
+      setProcessingLoading(false);
+      setProcessingError("");
 
       if (!productId) return;
 
-      const data = await fetchProcessingOptions(productId);
-      if (!cancelled) setProcessingOptions(data.options || []);
+      try {
+        const data = await fetchProcessingOptions(productId);
+        if (!cancelled) setProcessingOptions(data.options || []);
+      } catch {
+        if (!cancelled) {
+          setProcessingOptions([]);
+          setProcessingError("Не удалось загрузить варианты кулинарной обработки.");
+        }
+      }
     })();
     return () => { cancelled = true; };
   }, [productId]);
@@ -93,54 +103,70 @@ export default function NutritionCalculatorModal({
     let cancelled = false;
     (async () => {
       setProcessed(null);
+      setProcessingError("");
+      setProcessingLoading(false);
       if (!productId) return;
       if (processingId === "none") return;
 
       const gramsNum = Number(grams);
       if (!gramsNum || gramsNum <= 0) return;
 
-      const data = await fetchProcessedProduct(productId, Number(processingId), gramsNum);
-      if (!cancelled) setProcessed(data);
-      console.log("processed.weight_g", data?.weight_g, "gramsNum", gramsNum);
+      setProcessingLoading(true);
+      try {
+        const data = await fetchProcessedProduct(productId, Number(processingId), gramsNum);
+        if (!cancelled) setProcessed(data);
+      } catch {
+        if (!cancelled) setProcessingError("Не удалось пересчитать продукт с учётом обработки.");
+      } finally {
+        if (!cancelled) setProcessingLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [productId, processingId, grams]);
 
   const gramsNum = grams ? Number(grams) : 0;
-  const effectiveWeight = (processingId !== "none" && processed?.weight_g != null)
-  ? Number(processed.weight_g)
-  : gramsNum;
+  const effectiveWeight = gramsNum;
+  const outputWeight = (processingId !== "none" && processed?.output_weight_g != null)
+    ? Number(processed.output_weight_g)
+    : null;
   const multiplier = effectiveWeight > 0 ? effectiveWeight / 100 : 0;
 
   if (!open) return null;
 
   // только цифры для граммовки
   const handleGramsChange = (e) => {
-    const clean = e.target.value.replace(/\D+/g, ""); // цифры
+    const raw = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
+    const parts = raw.split(".");
+    const clean = parts.length > 1 ? `${parts[0]}.${parts.slice(1).join("")}` : raw;
     setGrams(clean);
   };
 
   const getShownAndPct = (key) => {
-    if (!product || multiplier <= 0) return { base100: null, shown: null, pct: null, new100: null };
+    if (!product || multiplier <= 0) {
+      return { base100: null, baseAmount: null, shown: null, pct: null, new100: null, lossPct: null };
+    }
 
     const base100 = product[key];
-    let shown = base100 == null ? null : Number(base100) * multiplier;
+    const baseAmount = base100 == null ? null : Number(base100) * multiplier;
+    let shown = baseAmount;
     let new100 = null;
     let pct = null;
+    let lossPct = null;
 
     // обработка включена и данные пришли
     if (processingId !== "none" && processed) {
       new100 = processed.per_100g_flat?.[key];
       const newShown = processed.per_weight_flat?.[key];
+      lossPct = processed.loss_pct_flat?.[key] ?? null;
 
       if (newShown != null) shown = newShown;
 
-      if (base100 != null && new100 != null && Number(base100) !== 0) {
-        pct = ((Number(new100) - Number(base100)) / Number(base100)) * 100;
+      if (baseAmount != null && shown != null && Number(baseAmount) !== 0) {
+        pct = ((Number(shown) - Number(baseAmount)) / Number(baseAmount)) * 100;
       }
     }
 
-    return { base100, shown, pct, new100 };
+    return { base100, baseAmount, shown, pct, new100, lossPct };
   };
 
 
@@ -149,40 +175,46 @@ export default function NutritionCalculatorModal({
     return (
       <div>
         <div style={subtitle}>
-          Результат (на {Math.round(effectiveWeight)} г)
-          {effectiveWeight !== gramsNum && gramsNum > 0 && (
-            <span style={{ marginLeft: 8, fontSize: 12, color: "#666", fontWeight: 400 }}>
-              (введено: {gramsNum} г)
-            </span>
-          )}
-          :
+          Результат для {fmt(effectiveWeight)} г исходного продукта:
         </div>
-        {processingId !== "none" && !processed && (
+        {processingLoading && (
           <div style={{ color: "#666", fontSize: 13, margin: "6px 0 10px" }}>
             Пересчёт с учётом обработки…
+          </div>
+        )}
+        {processingError && (
+          <div style={{ color: "#b42318", fontSize: 13, margin: "6px 0 10px" }}>
+            {processingError}
           </div>
         )}
         {previewGroups.map(g => (
           <div key={g.id} style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 13, color: "#666", marginBottom: 4 }}>{g.label}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1fr", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 8, alignItems: "center" }}>
+              <div style={{ fontSize: 12, color: "#666", fontWeight: 600 }}>Показатель</div>
+              <div style={{ fontSize: 12, color: "#666", fontWeight: 600 }}>Исходное содержание без обработки</div>
+              <div style={{ fontSize: 12, color: "#666", fontWeight: 600 }}>Итого после обработки</div>
+              <div style={{ fontSize: 12, color: "#666", fontWeight: 600 }}>К исходной порции</div>
               {g.keys.map(key => {
                 const meta = ALL_COLUMNS.find(c => c.key === key);
-                const { shown, pct } = getShownAndPct(key);
+                const { baseAmount, shown, pct, lossPct } = getShownAndPct(key);
 
                 const bg =
                   pct == null ? "transparent"
                   : pct < 0 ? "rgba(220,38,38,0.12)"
                   : "rgba(34,197,94,0.15)";
+                const cell = { background: bg, padding: "2px 4px", borderRadius: 4 };
 
                 return (
-                  <div key={key} style={{ display: "contents", background: bg }}>
-                    <div style={{ color: "#333" }}>{meta?.label ?? key}</div>
-                    <div>
-                      {fmt(shown)}
-                      {pct != null && (
+                  <div key={key} style={{ display: "contents" }}>
+                    <div style={{ ...cell, color: "#333" }}>{meta?.label ?? key}</div>
+                    <div style={cell}>{fmt(baseAmount)}</div>
+                    <div style={cell}>{fmt(shown)}</div>
+                    <div style={cell}>
+                      {pct == null ? "—" : `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`}
+                      {lossPct != null && (
                         <span style={{ marginLeft: 6, fontSize: 12, color: "#555" }}>
-                          {pct > 0 ? "▲" : "▼"} {Math.abs(pct).toFixed(1)}%
+                          потери {fmt(lossPct)}%
                         </span>
                       )}
                     </div>
@@ -196,10 +228,6 @@ export default function NutritionCalculatorModal({
     );
   };
 
-  const apply = () => {
-    onClose();
-  };
-
   const handleExportCalc = () => {
     if (!product || multiplier <= 0) {
       alert("Сначала выберите продукт и укажите граммовку больше 0");
@@ -208,14 +236,14 @@ export default function NutritionCalculatorModal({
 
     const rows = [];
 
-    // Первая строка — шапка с общей информацией
     rows.push({
       "Продукт": product.name,
-      "Граммовка (г)": effectiveWeight,
+      "Граммовка исходного продукта (г)": effectiveWeight,
+      "Масса готового продукта (г)": outputWeight ?? "",
       "Обработка": processingId === "none"
         ? "Без обработки"
         : (processingOptions.find(o => String(o.processing_id) === String(processingId))?.name || `ID=${processingId}`),
-      "Примечание": "Пищевая ценность пересчитана на указанную граммовку; при наличии — учтены потери при обработке",
+      "Примечание": "Сначала применены потери нутриентов к исходной порции, затем остаток пересчитан на 100 г готового продукта с учётом массы после обработки",
     });
 
     rows.push({}); // пустая строка
@@ -224,22 +252,24 @@ export default function NutritionCalculatorModal({
     previewGroups.forEach(group => {
       rows.push({ "Группа": group.label }); // заголовок группы
       group.keys.forEach(key => {
-        const { base100, shown, pct } = getShownAndPct(key);
+        const { base100, baseAmount, shown, pct, lossPct } = getShownAndPct(key);
         const meta = ALL_COLUMNS.find(c => c.key === key);
 
         rows.push({
           "Группа": group.label,
           "Показатель": meta?.label ?? key,
-          "Значение на 100 г": base100 == null ? "" : Number(base100),
-          [`Значение на ${effectiveWeight} г`]: shown == null ? "" : Number(shown),
-          "Изменение, %": pct == null ? "" : Number(pct.toFixed(2)),
+          "Исходное значение на 100 г": base100 == null ? "" : Number(base100),
+          "Исходное содержание без обработки": baseAmount == null ? "" : Number(baseAmount),
+          "Итого после обработки": shown == null ? "" : Number(shown),
+          "Потери по правилу, %": lossPct == null ? "" : Number(lossPct),
+          "Изменение количества, %": pct == null ? "" : Number(pct.toFixed(2)),
         });
       });
 
       rows.push({}); // пустая строка между группами
     });
 
-    exportJsonToExcel(rows, `calc_${product.id}_${Math.round(effectiveWeight)}g.xlsx`);
+    exportJsonToExcel(rows, `calc_${product.id}_${String(effectiveWeight).replace(".", "_")}g.xlsx`);
   };
 
 
@@ -300,12 +330,20 @@ export default function NutritionCalculatorModal({
           <label>Граммовка (г)</label>
           <input
             style={input}
-            inputMode="numeric"
+            inputMode="decimal"
             value={grams}
             onChange={handleGramsChange}
-            placeholder="например: 150"
+            placeholder="например: 150 или 12.5"
           />
         </div>
+
+        {outputWeight != null && (
+          <div style={{ fontSize: 13, color: "#666", margin: "4px 0 10px" }}>
+            Расчёт выполнен для {effectiveWeight} г исходного продукта.
+            Масса готового продукта: {fmt(outputWeight)} г.
+            Сначала применены потери нутриентов, затем остаток пересчитан на массу готового продукта.
+          </div>
+        )}
 
         {renderPreview()}
 
@@ -315,19 +353,11 @@ export default function NutritionCalculatorModal({
           onClick={handleExportCalc}
           disabled={!product || multiplier <= 0}
         >
-          📄 Экспорт в Excel
+          Экспорт в Excel
         </button>
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
           <button type="button" style={btn} onClick={onClose}>Закрыть</button>
-          <button
-            type="button"
-            style={{ ...btn, borderColor: "#2e7d32" }}
-            onClick={apply}
-            disabled={!product || multiplier <= 0}
-          >
-            Показать
-          </button>
         </div>
       </div>
     </div>

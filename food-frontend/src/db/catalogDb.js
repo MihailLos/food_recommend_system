@@ -23,18 +23,6 @@ function dedupeByIdKeepLast(items) {
   return Array.from(map.values());
 }
 
-function findDuplicateIds(items) {
-  const seen = new Set();
-  const dup = new Set();
-  for (const x of items) {
-    const id = x?.id;
-    if (id === undefined || id === null) continue;
-    if (seen.has(id)) dup.add(id);
-    else seen.add(id);
-  }
-  return Array.from(dup);
-}
-
 // Утилиты
 export async function getLocalVersion() {
   const row = await catalogDb.table("meta").get("version");
@@ -44,17 +32,6 @@ export async function setLocalVersion(value) {
   await catalogDb.table("meta").put({ key: "version", value });
 }
 export async function replaceProducts(items) {
-  const ids = items.map(x => x.id);
-  const uniq = new Set(ids);
-  console.log("total:", items.length, "uniq:", uniq.size);
-
-  const dupIds = findDuplicateIds(items);
-  console.log("Duplicate ids count:", dupIds.length, "sample:", dupIds.slice(0, 20));
-  console.log("Example dup records:", items.filter(x => x.id === dupIds[0]));
-
-  const types = new Set(items.map(x => typeof x?.id));
-  console.log("id types:", [...types]); // если увидишь ["number","string"] — bingo
-
   const deduped = dedupeByIdKeepLast(items);
 
   await catalogDb.products.clear();
@@ -71,13 +48,6 @@ export async function addProduct(item) {
   await catalogDb.products.add(item);
 }
 export async function bulkReplace(items) {
-  const dupIds = findDuplicateIds(items);
-  console.log("Duplicate ids count:", dupIds.length, "sample:", dupIds.slice(0, 20));
-  console.log("Example dup records:", items.filter(x => x.id === dupIds[0]));
-
-  const types = new Set(items.map(x => typeof x?.id));
-  console.log("id types:", [...types]); // если увидишь ["number","string"] — bingo
-
   const deduped = dedupeByIdKeepLast(items);
 
   await catalogDb.transaction("rw", catalogDb.products, async () => {
