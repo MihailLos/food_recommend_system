@@ -1129,9 +1129,6 @@ export default function RecommendationsTab({ profileId }) {
         <div style={{ ...smallMuted, marginTop: 4 }}>
           Направление: {dir}
         </div>
-        <div style={{ ...smallMuted, marginTop: 2 }}>
-          Приоритет: {pref?.priority ?? "—"}
-        </div>
         {typeof pref?.value === "number" && (
           <div style={{ ...smallMuted, marginTop: 2 }}>
             Значение в продукте: {pref.value}

@@ -91,15 +91,7 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
     )
 
     target_energy_pre_limit_kcal_day = tdee_kcal_day + energy_delta_kcal
-    calorie_limit_kcal = (
-        float(profile.calorie_limit_kcal)
-        if profile.calorie_limit_kcal is not None
-        else None
-    )
-    if calorie_limit_kcal is not None:
-        target_energy_kcal_day = min(target_energy_pre_limit_kcal_day, calorie_limit_kcal)
-    else:
-        target_energy_kcal_day = target_energy_pre_limit_kcal_day
+    target_energy_kcal_day = target_energy_pre_limit_kcal_day
     target_energy_kcal_day = max(target_energy_kcal_day, 0.0)
 
     if manual:
@@ -132,8 +124,6 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
         "goal_id": goal.id if goal else None,
         "goal_type": goal.goal_type if goal else None,
         "energy_delta_kcal": energy_delta_kcal,
-        "calorie_limit_kcal": calorie_limit_kcal,
-
         "energy_calc": {
             "bmr_kcal_day": round(float(res.bmr_kcal_day), 2),
             "kfa": round(float(res.kfa), 2),
@@ -193,7 +183,6 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
             "age_years": int(profile.age_years),
             "macro_norm_row_id": macro_row.id,
             "target_energy_source": "tdee_plus_goal_delta",
-            "target_energy_limited_by_profile_cap": calorie_limit_kcal is not None and target_energy_kcal_day < target_energy_pre_limit_kcal_day,
         },
     }
 

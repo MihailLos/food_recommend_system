@@ -302,7 +302,6 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
     weight_kg: 70,
     work_group_id: "",
     has_minor_children: false,
-    calorie_limit_kcal: "",
     vital_capacity_ml: "",
     hr_rest: "",
     hr_after_squats: "",
@@ -387,7 +386,6 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
       weight_kg: selected.weight_kg ?? 70,
       work_group_id: selected.work_group?.id ?? "",
       has_minor_children: !!selected.has_minor_children,
-      calorie_limit_kcal: selected.calorie_limit_kcal ?? "",
       vital_capacity_ml: selected.vital_capacity_ml ?? "",
       hr_rest: selected.hr_rest ?? "",
       hr_after_squats: selected.hr_after_squats ?? "",
@@ -417,7 +415,6 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
       weight_kg: Number(form.weight_kg),
       work_group_id: Number(form.work_group_id),
       has_minor_children: !!form.has_minor_children,
-      calorie_limit_kcal: numOrNull(form.calorie_limit_kcal),
 
       vital_capacity_ml: numOrNull(form.vital_capacity_ml),
       hr_rest: numOrNull(form.hr_rest),
@@ -497,6 +494,13 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
         setError(e?.response?.data ? JSON.stringify(e.response.data) : (e?.message || "Ошибка установки активного профиля"));
     }
   };
+
+  const profileTitle = selected
+    ? (
+      selected.display_name
+        || `${selected.sex === "male" ? "Мужчина" : "Женщина"}, ${selected.age_years} лет, ${selected.weight_kg} кг`
+    )
+    : "Новый профиль";
 
   if (loading) return <div style={{ padding: 16 }}>Загрузка модуля потребителя…</div>;
 
@@ -582,7 +586,7 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
         <div style={{ ...box, padding: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontWeight: 700 }}>
-              {selectedId ? `Профиль #${selectedId}` : "Новый профиль"}
+              {profileTitle}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               {selectedId && <button style={{ ...btn, borderColor: "#e57373" }} onClick={handleDelete}>Удалить</button>}

@@ -385,7 +385,7 @@ class ConsumerGoalViewSet(viewsets.ModelViewSet):
         """
         GET  /api/consumer/goals/{id}/preferences/  - список предпочтений
         PUT  /api/consumer/goals/{id}/preferences/  - заменить список целиком
-        Body для PUT: [{nutrient_code, direction, priority}, ...]
+        Body для PUT: [{nutrient_code, direction, priority?}, ...]
         """
         goal = self.get_object()
 
@@ -410,7 +410,7 @@ class ConsumerGoalViewSet(viewsets.ModelViewSet):
                     goal=goal,
                     nutrient_code=item["nutrient_code"],
                     direction=item["direction"],
-                    priority=item.get("priority"),
+                    priority=item.get("priority") or 2,
                 )
                 for item in ser.validated_data
             ]

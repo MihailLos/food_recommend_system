@@ -41,6 +41,198 @@ const row = {
   marginBottom: 10,
 };
 
+const goalTypeLabels = {
+  lose_weight: "Похудение",
+  gain_muscle: "Набор мышечной массы",
+  maintain: "Поддержание",
+};
+
+function HelpPopover({ title, children }) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <span style={{ position: "relative", display: "inline-block" }}>
+      <span
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          marginLeft: 6,
+          cursor: "pointer",
+          color: "#2e7d32",
+          fontWeight: 700,
+          border: "1px solid #2e7d32",
+          borderRadius: "50%",
+          width: 18,
+          height: 18,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 12,
+          userSelect: "none",
+        }}
+      >
+        i
+      </span>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: 26,
+            left: 0,
+            zIndex: 100,
+            width: 360,
+            background: "#fff",
+            border: "1px solid #ddd",
+            borderRadius: 10,
+            padding: 12,
+            boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>{title}</div>
+          <div style={{ fontSize: 13, color: "#333", lineHeight: 1.45 }}>
+            {children}
+          </div>
+          <div style={{ textAlign: "right", marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              style={{
+                fontSize: 12,
+                padding: "4px 8px",
+                border: "1px solid #ddd",
+                borderRadius: 6,
+                background: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
+function TargetHelp({ type, targets, profile }) {
+  const energy = targets?.target_energy_kcal_day;
+  const pct = targets?.macros_pct || {};
+  const tdee = targets?.energy_calc?.tdee_kcal_day;
+  const delta = targets?.energy_delta_kcal ?? 0;
+  const debug = targets?.debug || {};
+  const mr = targets?.mr_norms || {};
+
+  if (type === "targets") {
+    return (
+      <>
+        <div>Это суточные ориентиры, которые дальше используются в модуле рекомендаций.</div>
+        <div style={{ marginTop: 6 }}>
+          Они рассчитываются из данных профиля, активной цели питания и нормативов МР 2.3.1.0253-21.
+        </div>
+      </>
+    );
+  }
+
+  if (type === "tdee") {
+    return (
+      <>
+        <div>TDEE — суточные энерготраты с учётом физической активности.</div>
+        {targets?.energy_calc && (
+          <div style={{ marginTop: 6 }}>
+            Пример: BMR {targets.energy_calc.bmr_kcal_day} × КФА {targets.energy_calc.kfa} = {tdee} ккал/сут.
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (type === "baseEnergy") {
+    return (
+      <>
+        <div>База целевой энергии — это TDEE с поправкой из выбранной цели питания.</div>
+        <div style={{ marginTop: 6 }}>
+          Пример: {tdee ?? "TDEE"} + {delta} = {targets?.target_energy_base_kcal_day ?? "—"} ккал/сут.
+        </div>
+      </>
+    );
+  }
+
+  if (type === "targetEnergy") {
+    return (
+      <>
+        <div>Это итоговая энергия, от которой считаются БЖУ и часть показателей рекомендаций.</div>
+        <div style={{ marginTop: 6 }}>
+          Сейчас она равна базе целевой энергии: {targets?.target_energy_base_kcal_day ?? "—"} ккал/сут.
+        </div>
+      </>
+    );
+  }
+
+  if (type === "macrosMode") {
+    return (
+      <>
+        <div>
+          Если режим ручной, проценты БЖУ взяты из формы цели. Если режим по нормативам МР,
+          проценты рассчитаны из строки нормативной таблицы.
+        </div>
+        <div style={{ marginTop: 6 }}>
+          На строку МР повлияли: пол {profile?.sex === "female" ? "женский" : "мужской"},
+          возраст {profile?.age_years ?? debug.age_years} лет, группа труда {debug.work_group_id ?? "—"}.
+        </div>
+      </>
+    );
+  }
+
+  if (type === "macrosPct") {
+    return (
+      <>
+        <div>Проценты показывают, какая доля целевой энергии приходится на белки, жиры и углеводы.</div>
+        {targets?.macros_mode === "mr_table" && (
+          <div style={{ marginTop: 6 }}>
+            В МР для текущего профиля найдена строка: энергия {mr.energy_kcal_day} ккал,
+            белок {mr.protein_g_day} г, жиры {mr.fat_g_day} г, углеводы {mr.carb_g_day} г.
+            Из неё получены проценты: Б {pct.protein_pct}% / Ж {pct.fat_pct}% / У {pct.carb_pct}%.
+          </div>
+        )}
+        {targets?.macros_mode === "manual" && (
+          <div style={{ marginTop: 6 }}>
+            Эти проценты введены вручную в активной цели питания.
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (type === "protein") {
+    return <div>Белок = {energy} × {pct.protein_pct}% / 4 = {targets?.target_macros_g_day?.protein_g} г/сут.</div>;
+  }
+
+  if (type === "fat") {
+    return <div>Жиры = {energy} × {pct.fat_pct}% / 9 = {targets?.target_macros_g_day?.fat_g} г/сут.</div>;
+  }
+
+  if (type === "carb") {
+    return <div>Углеводы = {energy} × {pct.carb_pct}% / 4 = {targets?.target_macros_g_day?.carb_g} г/сут.</div>;
+  }
+
+  if (type === "sodium") {
+    return (
+      <>
+        <div>Натрий берётся из нормативов минералов для пола профиля.</div>
+        <div style={{ marginTop: 6 }}>
+          Если норматив в базе не найден, используется fallback 1300 мг/сут.
+        </div>
+      </>
+    );
+  }
+
+  if (type === "nlc") {
+    return <div>НЖК = {energy} × 10% / 9 = {targets?.target_fat_acids_day?.nlc_g} г/сут.</div>;
+  }
+
+  return null;
+}
+
 export default function ConsumerGoalsTab({ profileId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -50,7 +242,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [profile, setProfile] = useState(null);
   const [targets, setTargets] = useState(null);
   const [nutrients, setNutrients] = useState([]);
-  const [prefs, setPrefs] = useState([]); // [{ nutrient_code, direction, priority }]
+  const [prefs, setPrefs] = useState([]); // [{ nutrient_code, direction }]
   const [prefsLoading, setPrefsLoading] = useState(false);
   const [prefsSaving, setPrefsSaving] = useState(false);
 
@@ -58,7 +250,6 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [newPref, setNewPref] = useState({
     nutrient_code: "",
     direction: "more",
-    priority: 2,
   });
 
   // false = auto by backend (MR), true = user enters %
@@ -165,7 +356,6 @@ export default function ConsumerGoalsTab({ profileId }) {
             (p || []).map((x) => ({
               nutrient_code: x.nutrient_code,
               direction: x.direction,
-              priority: x.priority ?? 2,
             }))
           );
         }
@@ -174,7 +364,7 @@ export default function ConsumerGoalsTab({ profileId }) {
           setError(
             e?.response?.data
               ? JSON.stringify(e.response.data)
-              : (e?.message || "Ошибка загрузки preferences")
+              : (e?.message || "Ошибка загрузки предпочтений")
           );
         }
       } finally {
@@ -323,7 +513,6 @@ export default function ConsumerGoalsTab({ profileId }) {
       {
         nutrient_code: code,
         direction: newPref.direction,
-        priority: Number(newPref.priority) || 2,
       },
     ]);
   };
@@ -355,14 +544,13 @@ export default function ConsumerGoalsTab({ profileId }) {
         (p || []).map((x) => ({
           nutrient_code: x.nutrient_code,
           direction: x.direction,
-          priority: x.priority ?? 2,
         }))
       );
     } catch (e) {
       setError(
         e?.response?.data
           ? JSON.stringify(e.response.data)
-          : (e?.message || "Ошибка сохранения preferences")
+          : (e?.message || "Ошибка сохранения предпочтений")
       );
     } finally {
       setPrefsSaving(false);
@@ -398,6 +586,9 @@ export default function ConsumerGoalsTab({ profileId }) {
       : targets?.macros_mode || "—";
   const bmiValue = Number(profile?.bmi);
   const isObesityProfile = Number.isFinite(bmiValue) && bmiValue >= 30;
+  const selectedGoalTitle = selectedGoal
+    ? `${selectedGoal.title || goalTypeLabels[selectedGoal.goal_type] || selectedGoal.goal_type}${selectedGoal.energy_delta_kcal ? `, ${selectedGoal.energy_delta_kcal > 0 ? "+" : ""}${selectedGoal.energy_delta_kcal} ккал/сут` : ""}`
+    : "Новая цель";
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 16 }}>
@@ -434,7 +625,7 @@ export default function ConsumerGoalsTab({ profileId }) {
                 style={{ cursor: "pointer" }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ fontWeight: 600 }}>{g.title || g.goal_type}</div>
+                  <div style={{ fontWeight: 600 }}>{g.title || goalTypeLabels[g.goal_type] || g.goal_type}</div>
                   {g.is_active && (
                     <span
                       style={{
@@ -478,7 +669,7 @@ export default function ConsumerGoalsTab({ profileId }) {
       <div style={{ ...box, padding: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontWeight: 700 }}>
-            {selectedGoalId ? `Цель #${selectedGoalId}` : "Новая цель"}
+            {selectedGoalTitle}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {selectedGoalId && (
@@ -630,7 +821,7 @@ export default function ConsumerGoalsTab({ profileId }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 140px 120px auto",
+                  gridTemplateColumns: "1fr 140px auto",
                   gap: 8,
                   marginBottom: 10,
                 }}
@@ -657,19 +848,13 @@ export default function ConsumerGoalsTab({ profileId }) {
                   <option value="less">Меньше</option>
                 </select>
 
-                <select
-                  style={input}
-                  value={newPref.priority}
-                  onChange={(e) => setNewPref((p) => ({ ...p, priority: Number(e.target.value) }))}
-                >
-                  <option value={1}>Приоритет 1</option>
-                  <option value={2}>Приоритет 2</option>
-                  <option value={3}>Приоритет 3</option>
-                </select>
-
                 <button type="button" style={btn} onClick={addPref}>
                   Добавить
                 </button>
+              </div>
+              <div style={{ color: "#666", fontSize: 12, marginBottom: 10 }}>
+                Эти предпочтения смещают рекомендации: «Больше» повышает оценку продуктов с высоким содержанием выбранного нутриента,
+                «Меньше» — продуктов с низким содержанием. Все выбранные нутриенты учитываются одинаково.
               </div>
 
               {prefs.length === 0 ? (
@@ -684,7 +869,7 @@ export default function ConsumerGoalsTab({ profileId }) {
                         borderRadius: 10,
                         padding: 10,
                         display: "grid",
-                        gridTemplateColumns: "1fr 140px 120px auto",
+                        gridTemplateColumns: "1fr 140px auto",
                         gap: 8,
                         alignItems: "center",
                         background: "#fafafa",
@@ -699,16 +884,6 @@ export default function ConsumerGoalsTab({ profileId }) {
                       >
                         <option value="more">Больше</option>
                         <option value="less">Меньше</option>
-                      </select>
-
-                      <select
-                        style={input}
-                        value={p.priority ?? 2}
-                        onChange={(e) => updatePref(p.nutrient_code, { priority: Number(e.target.value) })}
-                      >
-                        <option value={1}>1</option>
-                        <option value={2}>2</option>
-                        <option value={3}>3</option>
                       </select>
 
                       <button
@@ -730,7 +905,7 @@ export default function ConsumerGoalsTab({ profileId }) {
                   onClick={savePrefs}
                   disabled={prefsSaving}
                 >
-                  {prefsSaving ? "Сохранение..." : "Сохранить preferences"}
+                  {prefsSaving ? "Сохранение..." : "Сохранить предпочтения"}
                 </button>
               </div>
             </>
@@ -750,33 +925,60 @@ export default function ConsumerGoalsTab({ profileId }) {
             background: "#fafafa",
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Targets</div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+            Расчёт суточных целевых показателей
+            <HelpPopover title="Что это за блок">
+              <TargetHelp type="targets" targets={targets} profile={profile} />
+            </HelpPopover>
+          </div>
           {!targets ? (
             <div style={{ color: "#666", fontSize: 13 }}>Нет данных</div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 8, fontSize: 14 }}>
-              <div>TDEE, ккал/сут</div>
+              <div>
+                TDEE, ккал/сут
+                <HelpPopover title="TDEE">
+                  <TargetHelp type="tdee" targets={targets} profile={profile} />
+                </HelpPopover>
+              </div>
               <div>{targets?.energy_calc?.tdee_kcal_day ?? "—"}</div>
 
-              <div>База целевой энергии, ккал/сут</div>
+              <div>
+                База целевой энергии, ккал/сут
+                <HelpPopover title="База целевой энергии">
+                  <TargetHelp type="baseEnergy" targets={targets} profile={profile} />
+                </HelpPopover>
+              </div>
               <div>{targets?.target_energy_base_kcal_day ?? "—"}</div>
 
-              <div>Лимит профиля, ккал/сут</div>
-              <div>{targets?.calorie_limit_kcal ?? "—"}</div>
-
-              <div>Целевая энергия, ккал/сут</div>
+              <div>
+                Целевая энергия, ккал/сут
+                <HelpPopover title="Целевая энергия">
+                  <TargetHelp type="targetEnergy" targets={targets} profile={profile} />
+                </HelpPopover>
+              </div>
               <div>{targets.target_energy_kcal_day}</div>
 
               {"macros_mode" in targets && (
                 <>
-                  <div>Режим БЖУ</div>
+                  <div>
+                    Режим БЖУ
+                    <HelpPopover title="Откуда взят режим БЖУ">
+                      <TargetHelp type="macrosMode" targets={targets} profile={profile} />
+                    </HelpPopover>
+                  </div>
                   <div>{macrosModeLabel}</div>
                 </>
               )}
 
               {targets.macros_pct && (
                 <>
-                  <div>БЖУ, %</div>
+                  <div>
+                    БЖУ, %
+                    <HelpPopover title="Почему именно такие проценты БЖУ">
+                      <TargetHelp type="macrosPct" targets={targets} profile={profile} />
+                    </HelpPopover>
+                  </div>
                   <div>
                     Б {targets.macros_pct.protein_pct} / Ж {targets.macros_pct.fat_pct} / У{" "}
                     {targets.macros_pct.carb_pct}
@@ -786,25 +988,50 @@ export default function ConsumerGoalsTab({ profileId }) {
 
               {targets.target_macros_g_day && (
                 <>
-                  <div>Белок, г/сут</div>
+                  <div>
+                    Белок, г/сут
+                    <HelpPopover title="Расчёт белка">
+                      <TargetHelp type="protein" targets={targets} profile={profile} />
+                    </HelpPopover>
+                  </div>
                   <div>{targets.target_macros_g_day.protein_g}</div>
-                  <div>Жиры, г/сут</div>
+                  <div>
+                    Жиры, г/сут
+                    <HelpPopover title="Расчёт жиров">
+                      <TargetHelp type="fat" targets={targets} profile={profile} />
+                    </HelpPopover>
+                  </div>
                   <div>{targets.target_macros_g_day.fat_g}</div>
-                  <div>Углеводы, г/сут</div>
+                  <div>
+                    Углеводы, г/сут
+                    <HelpPopover title="Расчёт углеводов">
+                      <TargetHelp type="carb" targets={targets} profile={profile} />
+                    </HelpPopover>
+                  </div>
                   <div>{targets.target_macros_g_day.carb_g}</div>
                 </>
               )}
 
               {targets.target_minerals_day && (
                 <>
-                  <div>Натрий, мг/сут</div>
+                  <div>
+                    Натрий, мг/сут
+                    <HelpPopover title="Откуда взят натрий">
+                      <TargetHelp type="sodium" targets={targets} profile={profile} />
+                    </HelpPopover>
+                  </div>
                   <div>{targets.target_minerals_day.na_mg ?? "—"}</div>
                 </>
               )}
 
               {targets.target_fat_acids_day && (
                 <>
-                  <div>НЖК, г/сут</div>
+                  <div>
+                    НЖК, г/сут
+                    <HelpPopover title="Расчёт НЖК">
+                      <TargetHelp type="nlc" targets={targets} profile={profile} />
+                    </HelpPopover>
+                  </div>
                   <div>{targets.target_fat_acids_day.nlc_g ?? "—"}</div>
                 </>
               )}

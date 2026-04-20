@@ -195,7 +195,6 @@ class ConsumerProfileSerializer(serializers.ModelSerializer):
             "work_group",
 
             "has_minor_children",
-            "calorie_limit_kcal",
 
             "vital_capacity_ml",
             "hr_rest",
@@ -327,6 +326,7 @@ class GoalNutrientPreferenceSerializer(serializers.ModelSerializer):
         model = GoalNutrientPreference
         fields = ["id", "nutrient_code", "direction", "priority"]
         list_serializer_class = GoalNutrientPreferenceListSerializer
+        extra_kwargs = {"priority": {"required": False, "allow_null": True}}
 
     def validate_direction(self, value):
         value = (value or "").strip().lower()
@@ -336,7 +336,7 @@ class GoalNutrientPreferenceSerializer(serializers.ModelSerializer):
 
     def validate_priority(self, value):
         if value is None:
-            return value
+            return 2
         if int(value) < 1 or int(value) > 3:
             raise serializers.ValidationError("priority must be in range 1..3.")
         return value
