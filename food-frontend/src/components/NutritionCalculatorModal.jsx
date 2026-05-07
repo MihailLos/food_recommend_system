@@ -5,8 +5,8 @@ import { exportJsonToExcel } from "../utils/exportExcel";
 import { fetchProcessingOptions, fetchProcessedProduct } from "../api/products.js";
 
 const overlay = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 };
-const modal = { background: "#fff", borderRadius: 12, padding: 20, width: 760, maxHeight: "90vh", overflow: "auto", boxShadow: "0 10px 40px rgba(0,0,0,0.18)" };
-const row = { display: "grid", gridTemplateColumns: "200px 1fr", gap: 12, alignItems: "center", marginBottom: 10 };
+const modal = { background: "#fff", borderRadius: 12, overflow: "auto", boxShadow: "0 10px 40px rgba(0,0,0,0.18)" };
+const row = { display: "grid", gap: 12, alignItems: "center", marginBottom: 10 };
 const input = { padding: 8, border: "1px solid #ddd", borderRadius: 6, width: "100%" };
 const btn = { padding: "8px 12px", border: "1px solid #ddd", background: "#fff", borderRadius: 6, cursor: "pointer" };
 const subtitle = { margin: "12px 0 6px", fontWeight: 600 };
@@ -275,10 +275,10 @@ export default function NutritionCalculatorModal({
 
   return (
     <div style={overlay} onClick={onClose}>
-      <div style={modal} onClick={(e) => e.stopPropagation()}>
+      <div style={modal} className="app-form-modal" onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Калькулятор пищевой ценности</h2>
 
-        <div style={row}>
+        <div style={row} className="app-form-row">
           <label>Тип продукта</label>
           <select style={input} value={typeId} onChange={e => {
             setTypeId(e.target.value);
@@ -290,7 +290,7 @@ export default function NutritionCalculatorModal({
           </select>
         </div>
 
-        <div style={row}>
+        <div style={row} className="app-form-row">
           <label>Подтип</label>
           <select style={input} value={subtypeId} disabled={!typeId}
             onChange={e => {
@@ -302,7 +302,7 @@ export default function NutritionCalculatorModal({
           </select>
         </div>
         
-        <div style={row}>
+        <div style={row} className="app-form-row">
           <label>Продукт</label>
           <select style={input} value={productId} disabled={!subtypeId}
             onChange={e => setProductId(e.target.value)}>
@@ -313,7 +313,7 @@ export default function NutritionCalculatorModal({
           </select>
         </div>
 
-        <div style={row}>
+        <div style={row} className="app-form-row">
           <label>Кулинарная обработка</label>
           <select style={input} value={processingId} disabled={!productId}
             onChange={e => setProcessingId(e.target.value)}>
@@ -326,7 +326,7 @@ export default function NutritionCalculatorModal({
           </select>
         </div>
 
-        <div style={row}>
+        <div style={row} className="app-form-row">
           <label>Граммовка (г)</label>
           <input
             style={input}

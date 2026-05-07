@@ -1,0 +1,200 @@
+.app-page {
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.app-two-col {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.app-form-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.app-form-row > label,
+.app-form-row > div:first-child {
+  min-width: 0;
+}
+
+.app-form-row > input,
+.app-form-row > select,
+.app-form-row > textarea,
+.app-form-row > div:last-child {
+  min-width: 0;
+}
+
+.app-header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.app-filters-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(220px, 1fr) minmax(220px, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.app-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.app-card-split {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.app-modal-shell {
+  width: min(980px, calc(100vw - 24px)) !important;
+  max-height: 88vh !important;
+}
+
+.app-form-modal {
+  width: min(760px, calc(100vw - 24px)) !important;
+  max-height: 90vh !important;
+  padding: 20px !important;
+}
+
+.app-scroll-x {
+  overflow-x: auto;
+}
+
+.app-products-layout {
+  background: #f6f7f9;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  transition: grid-template-columns 200ms ease;
+}
+
+.app-products-layout[data-sidebar="closed"] {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.app-products-sidebar {
+  border-right: 1px solid #eee;
+  background: #fff;
+  overflow: hidden;
+  transition: border-color 200ms ease;
+}
+
+.app-products-sidebar[data-sidebar="closed"] {
+  border-right: none;
+}
+
+.app-products-sidebar-inner {
+  transition: opacity 150ms ease;
+}
+
+.app-products-sidebar-inner[data-sidebar="closed"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.app-products-main {
+  min-width: 0;
+}
+
+.app-mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.3);
+  z-index: 35;
+}
+
+@media (max-width: 900px) {
+  .app-page {
+    padding: 14px;
+  }
+
+  .app-two-col,
+  .app-filters-grid,
+  .app-products-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .app-form-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .app-form-row > label,
+  .app-form-row > div:first-child {
+    margin-bottom: 2px;
+  }
+
+  .app-card-split {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .app-products-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(360px, calc(100vw - 32px));
+    max-width: 100vw;
+    z-index: 40;
+    border-right: 1px solid #eee !important;
+    border-bottom: none;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+    overflow-y: auto;
+    transform: translateX(0);
+    transition: transform 180ms ease;
+    background: #fff;
+  }
+
+  .app-products-sidebar[data-sidebar="closed"] {
+    display: block;
+    transform: translateX(-105%);
+  }
+}
+
+@media (max-width: 480px) {
+  .app-page {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .app-header-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .app-header-actions > button {
+    width: 100%;
+  }
+
+  .app-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-modal-shell,
+  .app-form-modal {
+    width: calc(100vw - 16px) !important;
+    padding: 16px !important;
+    border-radius: 12px !important;
+  }
+}
+
+@media (min-width: 1800px) {
+  .app-page {
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+}

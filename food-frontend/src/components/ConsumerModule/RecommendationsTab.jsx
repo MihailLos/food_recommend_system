@@ -61,8 +61,6 @@ const modalOverlay = {
 };
 
 const modalCard = {
-  width: "min(980px, 100%)",
-  maxHeight: "88vh",
   overflowY: "auto",
   background: "#fff",
   borderRadius: 14,
@@ -203,7 +201,7 @@ function DetailsModal({ item, onClose }) {
 
   return (
     <div style={modalOverlay} onClick={onClose}>
-      <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+      <div style={modalCard} className="app-modal-shell" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{item.product?.name}</div>
@@ -494,7 +492,7 @@ export default function RecommendationsTab({ profileId }) {
   const showGroupStats = !typeId;
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="app-page">
       <div style={{ ...box, padding: 16, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 700 }}>Рекомендации по продуктам</div>
         <div style={{ color: "#666", fontSize: 13, lineHeight: 1.5 }}>
@@ -502,14 +500,7 @@ export default function RecommendationsTab({ profileId }) {
           на 100 г и сравнивается с аналогами своей подгруппы.
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(220px, 1.4fr) minmax(220px, 1fr) minmax(220px, 1fr)",
-            gap: 10,
-            alignItems: "end",
-          }}
-        >
+        <div className="app-filters-grid">
           <div style={{ display: "grid", gap: 6 }}>
             <label>Поиск по названию</label>
             <input
@@ -567,7 +558,7 @@ export default function RecommendationsTab({ profileId }) {
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="app-header-actions">
             <button type="button" style={{ ...btn, borderColor: "#2e7d32" }} onClick={load} disabled={loading || filtersLoading}>
               {loading ? "Загрузка..." : "Рассчитать"}
             </button>
@@ -606,13 +597,7 @@ export default function RecommendationsTab({ profileId }) {
             </div>
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: 12,
-            }}
-          >
+          <div className="app-cards-grid">
             <div style={{ ...box, padding: 12 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>{statsTitle}</div>
               <div style={{ fontSize: 13, lineHeight: 1.6 }}>
@@ -672,7 +657,7 @@ export default function RecommendationsTab({ profileId }) {
                         gap: 8,
                       }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div className="app-card-split">
                         <div>
                           <div style={{ fontWeight: 700 }}>{item.product.name}</div>
                           <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>

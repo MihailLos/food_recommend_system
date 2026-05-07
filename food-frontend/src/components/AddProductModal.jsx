@@ -5,8 +5,8 @@ const overlay = {
   position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)",
   display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50
 };
-const modal = { background: "#fff", borderRadius: 12, padding: 20, width: 640, maxHeight: "90vh", overflow: "auto", boxShadow: "0 10px 40px rgba(0,0,0,0.18)" };
-const row = { display: "grid", gridTemplateColumns: "200px 1fr", gap: 12, alignItems: "center", marginBottom: 10 };
+const modal = { background: "#fff", borderRadius: 12, overflow: "auto", boxShadow: "0 10px 40px rgba(0,0,0,0.18)" };
+const row = { display: "grid", gap: 12, alignItems: "center", marginBottom: 10 };
 const input = { padding: 8, border: "1px solid #ddd", borderRadius: 6, width: "100%" };
 const btn = { padding: "8px 12px", border: "1px solid #ddd", background: "#fff", borderRadius: 6, cursor: "pointer" };
 
@@ -134,18 +134,18 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
 
   return (
     <div style={overlay} onClick={onClose}>
-      <div style={modal} onClick={(e) => e.stopPropagation()}>
+      <div style={modal} className="app-form-modal" onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0 }}>Добавить продукт локально</h2>
         <div style={{ marginBottom: 12, color: "#666", fontSize: 13 }}>
           Запись сохранится только в локальной базе браузера и не изменит общий серверный справочник.
         </div>
 
-        <div style={row}>
+        <div style={row} className="app-form-row">
           <label>Название</label>
           <input style={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Творог 5%" />
         </div>
 
-        <div style={row}>
+        <div style={row} className="app-form-row">
           <label>Тип продукции</label>
           <div style={{ display: "flex", gap: 8 }}>
             <select
@@ -199,7 +199,7 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
           ["organic_acids_g", "Органические кислоты, г"],
           ["alcohol_pct", "Алкоголь, %"],
         ].map(([key, label]) => (
-          <div key={key} style={row}>
+          <div key={key} style={row} className="app-form-row">
             <label>{label}</label>
             <input
               style={input}

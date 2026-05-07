@@ -14,7 +14,7 @@ import {
 const box = { background: "#fff", borderRadius: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.08)" };
 const btn = { padding: "8px 12px", border: "1px solid #ddd", background: "#fff", borderRadius: 8, cursor: "pointer" };
 const input = { padding: 8, border: "1px solid #ddd", borderRadius: 8, width: "100%" };
-const row = { display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, alignItems: "center", marginBottom: 10 };
+const row = { display: "grid", gap: 12, alignItems: "center", marginBottom: 10 };
 const requiredInput = {
   borderColor: "#f0b24b",
   background: "#fffaf0",
@@ -559,8 +559,8 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
   if (loading) return <div style={{ padding: 16 }}>Загрузка модуля потребителя…</div>;
 
   return (
-    <div style={{ padding: 16, display: "grid", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 16 }}>
+    <div className="app-page">
+      <div className="app-two-col">
         {/* Список профилей */}
         <div style={{ ...box, padding: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -642,7 +642,7 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
             <div style={{ fontWeight: 700 }}>
               {profileTitle}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="app-header-actions">
               {selectedId && <button style={{ ...btn, borderColor: "#e57373" }} onClick={handleDelete}>Удалить</button>}
               <button style={{ ...btn, borderColor: "#2e7d32" }} onClick={handleSave}>Сохранить</button>
             </div>
@@ -653,7 +653,7 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
           <div style={{ marginTop: 14 }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Основные данные</div>
 
-            <div style={row}>
+            <div style={row} className="app-form-row">
                 <label>Название профиля</label>
                 <input
                     style={input}
@@ -663,7 +663,7 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
                 />
                 </div>
 
-            <div style={row}>
+            <div style={row} className="app-form-row">
               <label>Пол <span style={{ color: "#c62828" }}>*</span></label>
               <select style={{ ...input, ...requiredInput }} value={form.sex} onChange={e => setForm({ ...form, sex: e.target.value })}>
                 <option value="male">Мужчина</option>
@@ -671,25 +671,25 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
               </select>
             </div>
 
-            <div style={row}>
+            <div style={row} className="app-form-row">
               <label>Возраст (лет) <span style={{ color: "#c62828" }}>*</span></label>
               <input style={{ ...input, ...requiredInput }} type="number" value={form.age_years}
                 onChange={e => setForm({ ...form, age_years: e.target.value })} />
             </div>
 
-            <div style={row}>
+            <div style={row} className="app-form-row">
               <label>Рост (см) <span style={{ color: "#c62828" }}>*</span></label>
               <input style={{ ...input, ...requiredInput }} type="number" value={form.height_cm}
                 onChange={e => setForm({ ...form, height_cm: e.target.value })} />
             </div>
 
-            <div style={row}>
+            <div style={row} className="app-form-row">
               <label>Вес (кг) <span style={{ color: "#c62828" }}>*</span></label>
               <input style={{ ...input, ...requiredInput }} type="number" value={form.weight_kg}
                 onChange={e => setForm({ ...form, weight_kg: e.target.value })} />
             </div>
 
-            <div style={row}>
+            <div style={row} className="app-form-row">
               <label>Группа труда <span style={{ color: "#c62828" }}>*</span></label>
               <select
                 style={{ ...input, ...requiredInput }}
@@ -712,7 +712,7 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
               </div>
             )}
 
-            <div style={row}>
+            <div style={row} className="app-form-row">
               <label>Есть несовершеннолетние дети</label>
               <input
                 type="checkbox"

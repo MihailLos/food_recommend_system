@@ -86,9 +86,17 @@ export default function ProductsPage() {
     const saved = localStorage.getItem("sidebarOpen");
     return saved === null ? true : saved === "true";
   });
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 900 : false
+  );
   useEffect(() => {
     localStorage.setItem("sidebarOpen", String(sidebarOpen));
   }, [sidebarOpen]);
+  useEffect(() => {
+    const onResize = () => setIsMobileLayout(window.innerWidth <= 900);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // видимые столбцы: по умолчанию — продукт + ключевые нутриенты
   const [visibleKeys, setVisibleKeys] = useState(new Set([
@@ -216,31 +224,21 @@ export default function ProductsPage() {
   };
 
   return (
-    <div
-      style={{
-        background: "#f6f7f9",
-        minHeight: "100vh",
-        display: "grid",
-        gridTemplateColumns: sidebarOpen ? "300px 1fr" : "0 1fr",   // ← ширина сайдбара
-        transition: "grid-template-columns 200ms ease",
-      }}
-    >
+    <div className="app-products-layout" data-sidebar={sidebarOpen ? "open" : "closed"}>
+      {isMobileLayout && sidebarOpen && (
+        <div className="app-mobile-backdrop" onClick={() => setSidebarOpen(false)} />
+      )}
       {/* Сайдбар */}
-      <aside
-        style={{
-          borderRight: sidebarOpen ? "1px solid #eee" : "none",
-          background: "#fff",
-          overflow: "hidden",
-          transition: "border-color 200ms ease",
-        }}
-        aria-hidden={!sidebarOpen}
-      >
+      <aside className="app-products-sidebar" data-sidebar={sidebarOpen ? "open" : "closed"} aria-hidden={!sidebarOpen}>
         {/* Чтобы красиво прятать содержимое, оборачиваем в контейнер с opacity */}
-        <div style={{
-          opacity: sidebarOpen ? 1 : 0,
-          transition: "opacity 150ms ease",
-          pointerEvents: sidebarOpen ? "auto" : "none",
-        }}>
+        <div
+          className="app-products-sidebar-inner"
+          data-sidebar={sidebarOpen ? "open" : "closed"}
+          style={{
+            opacity: sidebarOpen ? 1 : 0,
+            pointerEvents: sidebarOpen ? "auto" : "none",
+          }}
+        >
           <ColumnPicker
             visibleKeys={visibleKeys}
             onToggle={toggleColumn}
@@ -256,7 +254,7 @@ export default function ProductsPage() {
       </aside>
 
       {/* Контент */}
-      <main>
+      <main className="app-products-main">
         <header className="page-header">
           {/* Ряд 1: заголовок + действия */}
           <h1 className="page-title">Справочник хим. состава пищевых продуктов</h1>
@@ -266,7 +264,9 @@ export default function ProductsPage() {
 
             {/* Переключатель левого меню */}
             <button className="btn" onClick={() => setSidebarOpen(v => !v)}>
-              {sidebarOpen ? "Скрыть параметры" : "Дополнительные параметры"}
+              {sidebarOpen
+                ? (isMobileLayout ? "Закрыть фильтры" : "Скрыть параметры")
+                : (isMobileLayout ? "Фильтры и столбцы" : "Дополнительные параметры")}
             </button>
 
             <button className="btn" onClick={() => setAddOpen(true)}>Добавить локально</button>
@@ -322,11 +322,12 @@ export default function ProductsPage() {
                       alignItems: "flex-start",
                       gap: 12,
                       marginBottom: 8,
+                      flexWrap: "wrap",
                     }}
                   >
                     <h2 style={{ margin: 0 }}>{typeName}</h2>
 
-                    <div style={{ fontSize: 13, color: "#444" }}>
+                    <div style={{ fontSize: 13, color: "#444", minWidth: 0 }}>
                       <div style={{ marginBottom: 4 }}>Выберите подгруппы для отображения:</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                         {subgroups.map(sg => {
@@ -383,7 +384,7 @@ export default function ProductsPage() {
                   {/* Подгруппы этой группы, с учётом фильтра */}
                   {visibleSubgroups.map(({ subtypeId, subtypeName, items }) => {
                     return (
-                      <div key={`${typeKey}::${subtypeId ?? subtypeName}`} style={{ marginLeft: 16, marginBottom: 16 }}>
+                      <div key={`${typeKey}::${subtypeId ?? subtypeName}`} style={{ marginLeft: isMobileLayout ? 0 : 16, marginBottom: 16 }}>
                         <GroupSection
                           title={subtypeName}
                           items={items}

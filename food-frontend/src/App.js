@@ -10,13 +10,15 @@ const tabBtn = (active) => ({
   borderRadius: 10,
   cursor: "pointer",
   fontWeight: active ? 700 : 500,
+  flex: "1 1 280px",
+  minWidth: 0,
 });
 
 export default function App() {
   const [tab, setTab] = useState("catalog"); // catalog | consumer
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f6f7f9" }}>
+    <div style={{ minHeight: "100dvh", background: "#f6f7f9" }}>
       {/* Верхние вкладки */}
       <div
         style={{
@@ -28,6 +30,7 @@ export default function App() {
           padding: 12,
           display: "flex",
           gap: 8,
+          flexWrap: "wrap",
         }}
       >
         <button style={tabBtn(tab === "catalog")} onClick={() => setTab("catalog")}>

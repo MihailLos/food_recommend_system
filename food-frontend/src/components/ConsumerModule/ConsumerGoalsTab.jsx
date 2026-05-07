@@ -40,7 +40,6 @@ const requiredInput = {
 
 const row = {
   display: "grid",
-  gridTemplateColumns: "220px 1fr",
   gap: 12,
   alignItems: "center",
   marginBottom: 10,
@@ -869,7 +868,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   );
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 16 }}>
+    <div className="app-two-col">
       <div style={{ ...box, padding: 14 }}>
         <div
           style={{
@@ -949,7 +948,7 @@ export default function ConsumerGoalsTab({ profileId }) {
           <div style={{ fontWeight: 700 }}>
             {selectedGoalTitle}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="app-header-actions">
             {selectedGoalId && (
               <button
                 type="button"
@@ -972,7 +971,7 @@ export default function ConsumerGoalsTab({ profileId }) {
         {error && <div style={{ marginTop: 10, color: "crimson" }}>{error}</div>}
 
         <div style={{ marginTop: 14 }}>
-          <div style={row}>
+          <div style={row} className="app-form-row">
             <label>Название (опц.)</label>
             <input
               style={input}
@@ -981,7 +980,7 @@ export default function ConsumerGoalsTab({ profileId }) {
             />
           </div>
 
-          <div style={row}>
+          <div style={row} className="app-form-row">
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span>Цель <span style={{ color: "#c62828" }}>*</span></span>
               <HelpPopover title="Рекомендация по выбору цели">
@@ -999,7 +998,7 @@ export default function ConsumerGoalsTab({ profileId }) {
             </select>
           </div>
 
-          <div style={row}>
+          <div style={row} className="app-form-row">
             <label>Изменение целевой энергии, ккал/сут <span style={{ color: "#c62828" }}>*</span></label>
             <div style={{ display: "grid", gap: 8 }}>
               {form.goal_type === "maintain" && (
@@ -1097,7 +1096,7 @@ export default function ConsumerGoalsTab({ profileId }) {
             </label>
           </div>
 
-          <div style={row}>
+          <div style={row} className="app-form-row">
             <label>Белки, %</label>
             <input
               style={input}
@@ -1107,7 +1106,7 @@ export default function ConsumerGoalsTab({ profileId }) {
               onChange={(e) => setForm({ ...form, protein_pct: e.target.value })}
             />
           </div>
-          <div style={row}>
+          <div style={row} className="app-form-row">
             <label>Жиры, %</label>
             <input
               style={input}
@@ -1117,7 +1116,7 @@ export default function ConsumerGoalsTab({ profileId }) {
               onChange={(e) => setForm({ ...form, fat_pct: e.target.value })}
             />
           </div>
-          <div style={row}>
+          <div style={row} className="app-form-row">
             <label>Углеводы, %</label>
             <input
               style={input}
