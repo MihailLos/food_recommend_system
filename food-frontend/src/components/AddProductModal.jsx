@@ -96,7 +96,7 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
       id,
       name: name.trim(),
       typeId: finalTypeId,
-      typeName: finalTypeName || `Тип #${finalTypeId ?? "?"}`,
+      typeName: finalTypeName || `Группа #${finalTypeId ?? "?"}`,
       protein_g:    parseRuNumber(form.protein_g),
       fats_g:       parseRuNumber(form.fats_g),
       carbs_g:      parseRuNumber(form.carbs_g),

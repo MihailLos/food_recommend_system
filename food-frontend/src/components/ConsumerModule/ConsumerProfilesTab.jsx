@@ -15,6 +15,10 @@ const box = { background: "#fff", borderRadius: 12, boxShadow: "0 1px 6px rgba(0
 const btn = { padding: "8px 12px", border: "1px solid #ddd", background: "#fff", borderRadius: 8, cursor: "pointer" };
 const input = { padding: 8, border: "1px solid #ddd", borderRadius: 8, width: "100%" };
 const row = { display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, alignItems: "center", marginBottom: 10 };
+const requiredInput = {
+  borderColor: "#f0b24b",
+  background: "#fffaf0",
+};
 
 function getBmiMeta(bmi) {
   const value = Number(bmi);
@@ -54,6 +58,35 @@ function getBmiMeta(bmi) {
     label: "Ожирение",
     color: "#b71c1c",
     bg: "rgba(229,57,53,0.10)",
+  };
+}
+
+function getBmiGoalRecommendation(bmi) {
+  const value = Number(bmi);
+  if (!Number.isFinite(value)) {
+    return {
+      label: "Нет рекомендации",
+      reason: "Недостаточно данных для определения рекомендуемой цели питания.",
+    };
+  }
+
+  if (value < 18.5) {
+    return {
+      label: "Увеличение энергетической обеспеченности",
+      reason: "При недостаточной массе тела целесообразно рассматривать положительный энергетический баланс.",
+    };
+  }
+
+  if (value < 25) {
+    return {
+      label: "Поддержание массы",
+      reason: "При нормальном ИМТ базовой рекомендацией остаётся поддержание текущей массы тела.",
+    };
+  }
+
+  return {
+    label: "Снижение массы",
+    reason: "При избыточной массе тела и ожирении целесообразно рассматривать снижение массы тела.",
   };
 }
 
@@ -317,6 +350,7 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
   );
 
   const bmiMeta = getBmiMeta(selected?.bmi);
+  const bmiGoalRecommendation = getBmiGoalRecommendation(selected?.bmi);
   const energy = selected?.energy || null;
 
   const normalizeList = (data) => {
@@ -430,6 +464,26 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
   const handleSave = async () => {
     try {
       setError("");
+      if (!form.sex) {
+        setError("Заполните поле «Пол».");
+        return;
+      }
+      if (!Number.isFinite(Number(form.age_years)) || Number(form.age_years) <= 0) {
+        setError("Введите корректный возраст.");
+        return;
+      }
+      if (!Number.isFinite(Number(form.height_cm)) || Number(form.height_cm) <= 0) {
+        setError("Введите корректный рост.");
+        return;
+      }
+      if (!Number.isFinite(Number(form.weight_kg)) || Number(form.weight_kg) <= 0) {
+        setError("Введите корректный вес.");
+        return;
+      }
+      if (!form.work_group_id || !Number.isFinite(Number(form.work_group_id))) {
+        setError("Выберите группу труда.");
+        return;
+      }
       const payload = normalizePayload();
 
       if (selectedId) {
@@ -610,35 +664,35 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
                 </div>
 
             <div style={row}>
-              <label>Пол</label>
-              <select style={input} value={form.sex} onChange={e => setForm({ ...form, sex: e.target.value })}>
+              <label>Пол <span style={{ color: "#c62828" }}>*</span></label>
+              <select style={{ ...input, ...requiredInput }} value={form.sex} onChange={e => setForm({ ...form, sex: e.target.value })}>
                 <option value="male">Мужчина</option>
                 <option value="female">Женщина</option>
               </select>
             </div>
 
             <div style={row}>
-              <label>Возраст (лет)</label>
-              <input style={input} type="number" value={form.age_years}
+              <label>Возраст (лет) <span style={{ color: "#c62828" }}>*</span></label>
+              <input style={{ ...input, ...requiredInput }} type="number" value={form.age_years}
                 onChange={e => setForm({ ...form, age_years: e.target.value })} />
             </div>
 
             <div style={row}>
-              <label>Рост (см)</label>
-              <input style={input} type="number" value={form.height_cm}
+              <label>Рост (см) <span style={{ color: "#c62828" }}>*</span></label>
+              <input style={{ ...input, ...requiredInput }} type="number" value={form.height_cm}
                 onChange={e => setForm({ ...form, height_cm: e.target.value })} />
             </div>
 
             <div style={row}>
-              <label>Вес (кг)</label>
-              <input style={input} type="number" value={form.weight_kg}
+              <label>Вес (кг) <span style={{ color: "#c62828" }}>*</span></label>
+              <input style={{ ...input, ...requiredInput }} type="number" value={form.weight_kg}
                 onChange={e => setForm({ ...form, weight_kg: e.target.value })} />
             </div>
 
             <div style={row}>
-              <label>Группа труда</label>
+              <label>Группа труда <span style={{ color: "#c62828" }}>*</span></label>
               <select
-                style={input}
+                style={{ ...input, ...requiredInput }}
                 value={form.work_group_id}
                 onChange={e => setForm({ ...form, work_group_id: e.target.value })}
               >
@@ -666,6 +720,9 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
                 onChange={e => setForm({ ...form, has_minor_children: e.target.checked })}
               />
             </div>
+          </div>
+          <div style={{ fontSize: 12, color: "#8a6d1d", marginTop: 6 }}>
+            Поля, отмеченные <span style={{ color: "#c62828" }}>*</span>, обязательны для расчётов ИМТ, BMR, КФА и TDEE.
           </div>
 
           <div style={{ marginTop: 16 }}>
@@ -730,6 +787,12 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
                   >
                     {bmiMeta.label}
                   </span>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 13, color: "#333" }}>
+                  <strong>Рекомендуемая цель питания:</strong> {bmiGoalRecommendation.label}
+                </div>
+                <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                  {bmiGoalRecommendation.reason}
                 </div>
               </div>
 

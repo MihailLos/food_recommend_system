@@ -31,6 +31,11 @@ const input = {
   border: "1px solid #ddd",
   borderRadius: 8,
   width: "100%",
+  boxSizing: "border-box",
+};
+const requiredInput = {
+  borderColor: "#f0b24b",
+  background: "#fffaf0",
 };
 
 const row = {
@@ -42,9 +47,18 @@ const row = {
 };
 
 const goalTypeLabels = {
-  lose_weight: "Похудение",
-  gain_muscle: "Набор мышечной массы",
-  maintain: "Поддержание",
+  lose_weight: "Снижение массы",
+  gain_muscle: "Увеличение энергетической обеспеченности",
+  maintain: "Поддержание массы",
+};
+
+const dragItemStyles = {
+  padding: "8px 10px",
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  background: "#fff",
+  cursor: "grab",
+  fontSize: 13,
 };
 
 function HelpPopover({ title, children }) {
@@ -295,6 +309,29 @@ function TargetHelp({ type, targets, profile }) {
   return null;
 }
 
+function GoalChoiceHelp({ bmi }) {
+  const value = Number(bmi);
+  const currentRecommendation =
+    !Number.isFinite(value)
+      ? "Сначала заполните профиль, чтобы система могла рассчитать ИМТ."
+      : value < 18.5
+        ? "Для текущего ИМТ рекомендуется «Увеличение энергетической обеспеченности»."
+        : value < 25
+          ? "Для текущего ИМТ рекомендуется «Поддержание массы»."
+          : "Для текущего ИМТ рекомендуется «Снижение массы».";
+  return (
+    <>
+      <div>{currentRecommendation}</div>
+      <div style={{ marginTop: 6 }}>Текущее значение ИМТ: {Number.isFinite(value) ? value.toFixed(2) : "—"}.</div>
+      <div>Выбор цели питания рекомендуется соотносить с текущим ИМТ профиля.</div>
+      <div style={{ marginTop: 6 }}>ИМТ &lt; 18.5: рекомендуется «Увеличение энергетической обеспеченности».</div>
+      <div style={{ marginTop: 6 }}>ИМТ 18.5–24.9: рекомендуется «Поддержание массы».</div>
+      <div style={{ marginTop: 6 }}>ИМТ ≥ 25: рекомендуется «Снижение массы».</div>
+      <div style={{ marginTop: 6 }}>Это ориентир для выбора. Итоговую цель пользователь задаёт вручную.</div>
+    </>
+  );
+}
+
 export default function ConsumerGoalsTab({ profileId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -308,12 +345,8 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [prefsLoading, setPrefsLoading] = useState(false);
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [profileMode, setProfileMode] = useState("base");
-
-  // форма добавления новой preference
-  const [newPref, setNewPref] = useState({
-    nutrient_code: "",
-    direction: "more",
-  });
+  const [energyDirection, setEnergyDirection] = useState("-");
+  const [dragTarget, setDragTarget] = useState("");
 
   // false = auto by backend (MR), true = user enters %
   const [manualMacros, setManualMacros] = useState(false);
@@ -384,13 +417,14 @@ export default function ConsumerGoalsTab({ profileId }) {
     setForm({
       title: selectedGoal.title ?? "",
       goal_type: selectedGoal.goal_type ?? "maintain",
-      energy_delta_kcal: selectedGoal.energy_delta_kcal ?? "",
+      energy_delta_kcal: Math.abs(selectedGoal.energy_delta_kcal ?? 0) || "",
       protein_pct: selectedGoal.protein_pct ?? "",
       fat_pct: selectedGoal.fat_pct ?? "",
       carb_pct: selectedGoal.carb_pct ?? "",
       preferences_replace_base: Boolean(selectedGoal.preferences_replace_base),
     });
     setProfileMode(Boolean(selectedGoal.preferences_replace_base) ? "custom_only" : "base");
+    setEnergyDirection((selectedGoal.energy_delta_kcal ?? 0) < 0 ? "-" : "+");
   }, [selectedGoal]);
 
   useEffect(() => {
@@ -449,12 +483,21 @@ export default function ConsumerGoalsTab({ profileId }) {
 
   const normalizePayload = () => {
     const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
+    const rawDelta = numOrNull(form.energy_delta_kcal);
+    const absDelta = rawDelta == null ? null : Math.abs(rawDelta);
+    let signedDelta = absDelta;
+
+    if (absDelta != null) {
+      if (form.goal_type === "lose_weight") signedDelta = -absDelta;
+      else if (form.goal_type === "gain_muscle") signedDelta = absDelta;
+      else signedDelta = energyDirection === "-" ? -absDelta : absDelta;
+    }
 
     const payload = {
       profile_id: profileId,
       title: form.title || null,
       goal_type: form.goal_type,
-      energy_delta_kcal: numOrNull(form.energy_delta_kcal),
+      energy_delta_kcal: signedDelta,
       preferences_replace_base: profileMode === "custom_only",
     };
 
@@ -494,6 +537,20 @@ export default function ConsumerGoalsTab({ profileId }) {
     return true;
   };
 
+  const validateRequiredFields = () => {
+    if (!form.goal_type) {
+      setError("Выберите цель питания.");
+      return false;
+    }
+
+    if (form.energy_delta_kcal === "" || !Number.isFinite(Number(form.energy_delta_kcal)) || Number(form.energy_delta_kcal) < 0) {
+      setError("Введите корректное изменение целевой энергии.");
+      return false;
+    }
+
+    return true;
+  };
+
   const refreshTargets = async () => {
     if (!profileId) return;
     const [profileData, t] = await Promise.all([
@@ -507,6 +564,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const handleSave = async () => {
     try {
       setError("");
+      if (!validateRequiredFields()) return;
       if (!validateManualMacros()) return;
 
       const payload = normalizePayload();
@@ -543,6 +601,7 @@ export default function ConsumerGoalsTab({ profileId }) {
     setSelectedGoalId(null);
     setManualMacros(false);
     setProfileMode("base");
+    setEnergyDirection("-");
     setPrefs([]);
     setForm({
       title: "",
@@ -573,38 +632,6 @@ export default function ConsumerGoalsTab({ profileId }) {
     } catch (e) {
       setError(e?.message || "Ошибка удаления");
     }
-  };
-
-    const addPref = () => {
-    const code = (newPref.nutrient_code || "").trim();
-    if (!code) {
-      setError("Выберите нутриент.");
-      return;
-    }
-
-    // строго одна запись на нутриент
-    if (prefs.some((p) => p.nutrient_code === code)) {
-      setError("Этот нутриент уже добавлен в предпочтения.");
-      return;
-    }
-
-    setPrefs((prev) => [
-      ...prev,
-      {
-        nutrient_code: code,
-        direction: newPref.direction,
-      },
-    ]);
-  };
-
-  const removePref = (code) => {
-    setPrefs((prev) => prev.filter((p) => p.nutrient_code !== code));
-  };
-
-  const updatePref = (code, patch) => {
-    setPrefs((prev) =>
-      prev.map((p) => (p.nutrient_code === code ? { ...p, ...patch } : p))
-    );
   };
 
   const savePrefs = async () => {
@@ -643,6 +670,8 @@ export default function ConsumerGoalsTab({ profileId }) {
     return n ? `${n.ru_name} (${n.unit || "-"})` : code;
   };
 
+  const nutrientMeta = (code) => nutrients.find((x) => x.code === code) || null;
+
   const handleProfileModeChange = (nextMode) => {
     setProfileMode(nextMode);
     if (nextMode === "base") {
@@ -660,12 +689,6 @@ export default function ConsumerGoalsTab({ profileId }) {
     }
   };
 
-  if (!profileId) {
-    return <div style={{ ...box, padding: 16 }}>Сначала выберите профиль.</div>;
-  }
-
-  if (loading) return <div style={{ padding: 16 }}>Загрузка…</div>;
-
   const macrosModeLabel =
   targets?.macros_mode === "manual"
     ? "ручной"
@@ -674,6 +697,7 @@ export default function ConsumerGoalsTab({ profileId }) {
       : targets?.macros_mode || "—";
   const bmiValue = Number(profile?.bmi);
   const isObesityProfile = Number.isFinite(bmiValue) && bmiValue >= 30;
+  const energyRange = form.goal_type === "lose_weight" && isObesityProfile ? { min: 500, max: 700 } : { min: 250, max: 500 };
   const selectedGoalTitle = selectedGoal
     ? `${selectedGoal.title || goalTypeLabels[selectedGoal.goal_type] || selectedGoal.goal_type}${selectedGoal.energy_delta_kcal ? `, ${selectedGoal.energy_delta_kcal > 0 ? "+" : ""}${selectedGoal.energy_delta_kcal} ккал/сут` : ""}`
     : "Новая цель";
@@ -706,6 +730,143 @@ export default function ConsumerGoalsTab({ profileId }) {
       : form.goal_type === "gain_muscle"
         ? "Энергетическая ценность дополнительно относится к предпочтительным."
         : "Энергетическая ценность остаётся контрольным показателем и в базовые списки не включается.";
+
+  const availableNutrients = useMemo(
+    () => [...nutrients].sort((a, b) => String(a.ru_name || "").localeCompare(String(b.ru_name || ""), "ru")),
+    [nutrients]
+  );
+
+  const customPreferredCodes = useMemo(
+    () => prefs.filter((p) => p.direction === "more").map((p) => p.nutrient_code),
+    [prefs]
+  );
+  const customRestrictedCodes = useMemo(
+    () => prefs.filter((p) => p.direction === "less").map((p) => p.nutrient_code),
+    [prefs]
+  );
+
+  const visiblePreferredCodes =
+    profileMode === "custom_only"
+      ? customPreferredCodes
+      : Array.from(new Set([...basePreferredCodes, ...customPreferredCodes]));
+  const visibleRestrictedCodes =
+    profileMode === "custom_only"
+      ? customRestrictedCodes
+      : Array.from(new Set([...baseRestrictedCodes, ...customRestrictedCodes]));
+
+  const poolCodes = useMemo(() => {
+    const assigned = new Set([...visiblePreferredCodes, ...visibleRestrictedCodes]);
+    return availableNutrients.map((item) => item.code).filter((code) => !assigned.has(code));
+  }, [availableNutrients, visiblePreferredCodes, visibleRestrictedCodes]);
+
+  if (!profileId) {
+    return <div style={{ ...box, padding: 16 }}>Сначала выберите профиль.</div>;
+  }
+
+  if (loading) return <div style={{ padding: 16 }}>Загрузка…</div>;
+
+  const handleDragStart = (event, code) => {
+    event.dataTransfer.setData("text/plain", code);
+  };
+
+  const setCodeDirection = (code, direction) => {
+    setPrefs((prev) => {
+      const existing = prev.find((item) => item.nutrient_code === code);
+      if (existing) {
+        return prev.map((item) =>
+          item.nutrient_code === code ? { ...item, direction } : item
+        );
+      }
+      return [...prev, { nutrient_code: code, direction }];
+    });
+  };
+
+  const removeCodeFromCustom = (code) => {
+    setPrefs((prev) => prev.filter((item) => item.nutrient_code !== code));
+  };
+
+  const renderNutrientCard = (code) => {
+    const meta = nutrientMeta(code);
+    const isCustom = prefs.some((item) => item.nutrient_code === code);
+    return (
+      <div
+        key={code}
+        draggable={profileMode !== "base"}
+        onDragStart={(event) => handleDragStart(event, code)}
+        style={{
+          ...dragItemStyles,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 600 }}>{meta?.ru_name || code}</div>
+          <div style={{ fontSize: 11, color: "#666" }}>{meta?.unit || "-"}</div>
+        </div>
+        {profileMode !== "base" && (profileMode === "custom_only" || isCustom) && (
+          <button
+            type="button"
+            style={{ ...btn, padding: "4px 8px", fontSize: 12 }}
+            onClick={() => removeCodeFromCustom(code)}
+          >
+            Убрать
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const renderDropList = (title, codes, direction) => (
+    <div
+      onDragEnter={(event) => {
+        if (profileMode !== "base") {
+          event.preventDefault();
+          setDragTarget(direction);
+        }
+      }}
+      onDragOver={(event) => {
+        if (profileMode !== "base") {
+          event.preventDefault();
+          setDragTarget(direction);
+        }
+      }}
+      onDragLeave={() => setDragTarget((current) => (current === direction ? "" : current))}
+      onDrop={(event) => {
+        if (profileMode === "base") return;
+        event.preventDefault();
+        const code = event.dataTransfer.getData("text/plain");
+        if (code) setCodeDirection(code, direction);
+        setDragTarget("");
+      }}
+      style={{
+        minHeight: 160,
+        border: "1px dashed #c8d0d8",
+        borderRadius: 10,
+        padding: 10,
+        background:
+          dragTarget === direction
+            ? direction === "more"
+              ? "rgba(46,125,50,0.10)"
+              : "rgba(229,57,53,0.10)"
+            : "#fafafa",
+        display: "grid",
+        alignContent: "start",
+        gap: 8,
+        transition: "background 120ms ease",
+      }}
+    >
+      <div style={{ fontWeight: 700 }}>{title}</div>
+      {codes.length === 0 ? (
+        <div style={{ fontSize: 12, color: "#666" }}>
+          Перетащите сюда нутриенты из общего списка.
+        </div>
+      ) : (
+        codes.map(renderNutrientCard)
+      )}
+    </div>
+  );
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 16 }}>
@@ -821,56 +982,107 @@ export default function ConsumerGoalsTab({ profileId }) {
           </div>
 
           <div style={row}>
-            <label>Цель</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span>Цель <span style={{ color: "#c62828" }}>*</span></span>
+              <HelpPopover title="Рекомендация по выбору цели">
+                <GoalChoiceHelp bmi={bmiValue} />
+              </HelpPopover>
+            </div>
             <select
-              style={input}
+              style={{ ...input, ...requiredInput }}
               value={form.goal_type}
               onChange={(e) => setForm({ ...form, goal_type: e.target.value })}
             >
-              <option value="lose_weight">Похудение</option>
-              <option value="gain_muscle">Набор мышечной массы</option>
-              <option value="maintain">Поддержание</option>
+              <option value="lose_weight">Снижение массы</option>
+              <option value="gain_muscle">Увеличение энергетической обеспеченности</option>
+              <option value="maintain">Поддержание массы</option>
             </select>
           </div>
 
           <div style={row}>
-            <label>Изменение целевой энергии, ккал/сут</label>
-            <input
-              style={input}
-              type="number"
-              value={form.energy_delta_kcal}
-              onChange={(e) => setForm({ ...form, energy_delta_kcal: e.target.value })}
-            />
+            <label>Изменение целевой энергии, ккал/сут <span style={{ color: "#c62828" }}>*</span></label>
+            <div style={{ display: "grid", gap: 8 }}>
+              {form.goal_type === "maintain" && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13, color: "#555" }}>Направление:</span>
+                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="radio"
+                      checked={energyDirection === "-"}
+                      onChange={() => setEnergyDirection("-")}
+                    />
+                    Уменьшение
+                  </label>
+                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="radio"
+                      checked={energyDirection === "+"}
+                      onChange={() => setEnergyDirection("+")}
+                    />
+                    Увеличение
+                  </label>
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "88px minmax(0, 1fr)", gap: 8, alignItems: "center" }}>
+                <div
+                  style={{
+                    ...input,
+                    ...requiredInput,
+                    background: "#fafafa",
+                    color: "#555",
+                    textAlign: "center",
+                    fontWeight: 700,
+                  }}
+                >
+                  {form.goal_type === "lose_weight" ? "−" : form.goal_type === "gain_muscle" ? "+" : energyDirection}
+                </div>
+                <input
+                  style={{ ...input, ...requiredInput }}
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={form.energy_delta_kcal}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setForm({
+                      ...form,
+                      energy_delta_kcal: raw === "" ? "" : Math.max(0, Number(raw)),
+                    });
+                  }}
+                />
+              </div>
+
+              {(form.goal_type === "lose_weight" || form.goal_type === "gain_muscle") && (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <input
+                    type="range"
+                    min={energyRange.min}
+                    max={energyRange.max}
+                    step="10"
+                    value={form.energy_delta_kcal || energyRange.min}
+                    onChange={(e) => setForm({ ...form, energy_delta_kcal: Number(e.target.value) })}
+                  />
+                  <div style={{ fontSize: 12, color: "#666" }}>
+                    Рекомендуемый диапазон: {energyRange.min}–{energyRange.max} ккал/сут.
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
             Показывает, насколько целевая энергия должна отличаться от базовой нормы для текущего профиля.
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-            {form.goal_type === "lose_weight" && (
-                <>
-                <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: isObesityProfile ? -500 : -250 })}>
-                  {isObesityProfile ? "-500" : "-250"}
-                </button>
-                <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: -500 })}>-500</button>
-                {isObesityProfile && (
-                  <>
-                  <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: -600 })}>-600</button>
-                  <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: -700 })}>-700</button>
-                  </>
-                )}
-                <div style={{ fontSize: 12, color: "#666", alignSelf: "center" }}>
-                    {isObesityProfile
-                      ? "Для профилей с ИМТ >= 30 можно ориентироваться на типовой дефицит 500–700 ккал/сут по клиническим рекомендациям по ожирению."
-                      : "Диапазон 500–700 ккал/сут из клинических рекомендаций по ожирению применяют при ИМТ >= 30; в остальных случаях дефицит подбирают индивидуально."}
-                </div>
-                </>
-            )}
-
-            {form.goal_type === "maintain" && (
-                <button type="button" style={btn} onClick={() => setForm({ ...form, energy_delta_kcal: 0 })}>0</button>
-            )}
-          </div>
+          {form.goal_type === "lose_weight" && (
+            <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: "#666", alignSelf: "center" }}>
+                {isObesityProfile
+                  ? "Для профилей с ИМТ >= 30 используется диапазон 500–700 ккал/сут как типовой дефицит при ожирении."
+                  : "При ИМТ ниже 30 дефицит энергии подбирают индивидуально; в интерфейсе задан рабочий диапазон 250–500 ккал/сут."}
+              </div>
+            </div>
+          )}
 
           <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "10px 0 8px" }}>
             <div style={{ fontWeight: 600 }}>БЖУ (в % от калорийности)</div>
@@ -977,104 +1189,78 @@ export default function ConsumerGoalsTab({ profileId }) {
                   </span>
                 </label>
               </div>
+              <div style={{ fontSize: 12, color: "#8a6d1d", marginBottom: 10 }}>
+                Поля, отмеченные <span style={{ color: "#c62828" }}>*</span>, обязательны для расчёта целевых показателей и рекомендаций.
+              </div>
 
               <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: "#fafafa", border: "1px solid #eee" }}>
-                <div style={{ fontWeight: 600, marginBottom: 6 }}>Базовый набор для цели «{goalTypeLabels[form.goal_type] || form.goal_type}»</div>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                  {profileMode === "custom_only"
+                    ? "Ручной профиль нутриентов"
+                    : `Базовый набор для цели «${goalTypeLabels[form.goal_type] || form.goal_type}»`}
+                </div>
                 <div style={{ fontSize: 12, color: "#555", marginBottom: 6 }}>{energyModeText}</div>
-                <div style={{ fontSize: 12, color: "#333", lineHeight: 1.5 }}>
-                  <div><strong>Предпочтительные:</strong> {basePreferredCodes.map(nutrientLabel).join(", ")}</div>
-                  <div style={{ marginTop: 4 }}><strong>Ограничиваемые:</strong> {baseRestrictedCodes.map(nutrientLabel).join(", ")}</div>
-                </div>
+                {profileMode === "base" && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    {renderDropList("Базовые предпочтительные нутриенты", basePreferredCodes, "more")}
+                    {renderDropList("Базовые ограничиваемые нутриенты", baseRestrictedCodes, "less")}
+                  </div>
+                )}
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 140px auto",
-                  gap: 8,
-                  marginBottom: 10,
-                }}
-              >
-                <select
-                  style={input}
-                  disabled={profileMode === "base"}
-                  value={newPref.nutrient_code}
-                  onChange={(e) => setNewPref((p) => ({ ...p, nutrient_code: e.target.value }))}
-                >
-                  <option value="">Выберите нутриент…</option>
-                  {nutrients.map((n) => (
-                    <option key={n.code} value={n.code}>
-                      {n.ru_name} ({n.unit || "-"})
-                    </option>
-                  ))}
-                </select>
+              {profileMode !== "base" && (
+                <>
+                  <div style={{ color: "#666", fontSize: 12, marginBottom: 10 }}>
+                    Перетаскивайте нутриенты в списки «Предпочтительные» и «Ограничиваемые».
+                  </div>
 
-                <select
-                  style={input}
-                  disabled={profileMode === "base"}
-                  value={newPref.direction}
-                  onChange={(e) => setNewPref((p) => ({ ...p, direction: e.target.value }))}
-                >
-                  <option value="more">Больше</option>
-                  <option value="less">Меньше</option>
-                </select>
-
-                <button type="button" style={btn} onClick={addPref} disabled={profileMode === "base"}>
-                  Добавить
-                </button>
-              </div>
-              <div style={{ color: "#666", fontSize: 12, marginBottom: 10 }}>
-                Для каждого нутриента направление означает:
-                «Больше» — нутриент считается предпочтительным,
-                «Меньше» — нутриент считается ограничиваемым.
-                Если выбран режим «Оставить базовый профиль как есть», список ниже очищается и в расчёте не используется.
-              </div>
-
-              {prefs.length === 0 ? (
-                <div style={{ color: "#666", fontSize: 13 }}>
-                  {profileMode === "base"
-                    ? "Пользовательские настройки не заданы: используется только базовый профиль."
-                    : "Пользовательские нутриенты пока не заданы."}
-                </div>
-              ) : (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {prefs.map((p) => (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                      gap: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    {renderDropList("Предпочтительные нутриенты", visiblePreferredCodes, "more")}
+                    {renderDropList("Ограничиваемые нутриенты", visibleRestrictedCodes, "less")}
                     <div
-                      key={p.nutrient_code}
                       style={{
-                        border: "1px solid #eee",
+                        minHeight: 160,
+                        border: "1px dashed #c8d0d8",
                         borderRadius: 10,
                         padding: 10,
+                        background: "#fff",
                         display: "grid",
-                        gridTemplateColumns: "1fr 140px auto",
+                        alignContent: "start",
                         gap: 8,
-                        alignItems: "center",
-                        background: "#fafafa",
                       }}
                     >
-                      <div style={{ fontWeight: 600 }}>{nutrientLabel(p.nutrient_code)}</div>
-
-                      <select
-                        style={input}
-                        disabled={profileMode === "base"}
-                        value={p.direction}
-                        onChange={(e) => updatePref(p.nutrient_code, { direction: e.target.value })}
-                      >
-                        <option value="more">Больше</option>
-                        <option value="less">Меньше</option>
-                      </select>
-
-                      <button
-                        type="button"
-                        style={{ ...btn, borderColor: "#e57373" }}
-                        disabled={profileMode === "base"}
-                        onClick={() => removePref(p.nutrient_code)}
-                      >
-                        Удалить
-                      </button>
+                      <div style={{ fontWeight: 700 }}>Остальные нутриенты</div>
+                      {poolCodes.length === 0 ? (
+                        <div style={{ fontSize: 12, color: "#666" }}>Все доступные нутриенты уже распределены по спискам.</div>
+                      ) : (
+                        poolCodes.map((code) => (
+                          <div
+                            key={`pool-${code}`}
+                            draggable
+                            onDragStart={(event) => handleDragStart(event, code)}
+                            style={dragItemStyles}
+                          >
+                            {nutrientLabel(code)}
+                          </div>
+                        ))
+                      )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+
+                </>
               )}
 
               <div style={{ marginTop: 10, display: "flex", gap: 8 }}>

@@ -31,7 +31,7 @@ export default function App() {
         }}
       >
         <button style={tabBtn(tab === "catalog")} onClick={() => setTab("catalog")}>
-          📚 Справочник
+          📚 Справочник хим. состава пищевых продуктов
         </button>
         <button style={tabBtn(tab === "consumer")} onClick={() => setTab("consumer")}>
           🧑‍⚕️ Модуль потребителя

@@ -38,7 +38,7 @@ export default function NutritionCalculatorModal({
   const types = useMemo(() => {
     const m = new Map();
     for (const p of allProducts) {
-      if (p.typeId) m.set(String(p.typeId), p.typeName || `Тип #${p.typeId}`);
+      if (p.typeId) m.set(String(p.typeId), p.typeName || `Группа #${p.typeId}`);
     }
     return Array.from(m.entries()).map(([id, name]) => ({ id, name }))
       .sort((a,b)=>a.name.localeCompare(b.name,"ru"));
@@ -49,7 +49,7 @@ export default function NutritionCalculatorModal({
     const m = new Map();
     for (const p of allProducts) {
       if (String(p.typeId) !== String(typeId)) continue;
-      if (p.subtypeId) m.set(String(p.subtypeId), p.subtypeName || `Подтип #${p.subtypeId}`);
+      if (p.subtypeId) m.set(String(p.subtypeId), p.subtypeName || `Подгруппа #${p.subtypeId}`);
     }
     return Array.from(m.entries()).map(([id, name]) => ({ id, name }))
       .sort((a,b)=>a.name.localeCompare(b.name,"ru"));

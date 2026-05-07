@@ -344,6 +344,18 @@ def _format_level(share_pct: Optional[float]) -> Optional[str]:
     return "высокий вклад"
 
 
+def _format_percentile_text(percentile_q: float) -> str:
+    pct = round(percentile_q * 100.0, 1)
+    return f"выше, чем у {pct}% аналогов"
+
+
+def _format_correspondence_text(direction: str, correspondence_a: float) -> str:
+    pct = round(correspondence_a * 100.0, 1)
+    if direction == "preferred":
+        return f"полезный вклад {pct}%"
+    return f"ограничивающий вклад {pct}%"
+
+
 def _build_signal(
     product: FoodProducts,
     code: str,
@@ -520,11 +532,11 @@ def _summary_from_signals(product: FoodProducts, signals: List[dict], class_labe
     )
 
     positive_reasons = [
-        f"{s['ru_name']}: Q={s['percentile_q']:.3f}, A={s['correspondence_a']:.3f}"
+        f"{s['ru_name']}: {_format_percentile_text(s['percentile_q'])}, {_format_correspondence_text(s['direction'], s['correspondence_a'])}"
         for s in preferred[:3]
     ]
     limiting_reasons = [
-        f"{s['ru_name']}: Q={s['percentile_q']:.3f}, A={s['correspondence_a']:.3f}"
+        f"{s['ru_name']}: {_format_percentile_text(s['percentile_q'])}, {_format_correspondence_text(s['direction'], s['correspondence_a'])}"
         for s in restricted[:3]
     ]
 

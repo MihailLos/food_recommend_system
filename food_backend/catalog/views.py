@@ -39,6 +39,7 @@ class FoodProductTypeViewSet(viewsets.ModelViewSet):
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ["name"]
     ordering_fields = ["id", "name"]
+    pagination_class = None
 
 class FoodProductSubtypeViewSet(viewsets.ModelViewSet):
     queryset = FoodProductSubtypes.objects.all().order_by("id")
@@ -46,6 +47,7 @@ class FoodProductSubtypeViewSet(viewsets.ModelViewSet):
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ["name"]
     ordering_fields = ["id", "name"]
+    pagination_class = None
 
 class FoodProductViewSet(viewsets.ModelViewSet):
     queryset = FoodProducts.objects.prefetch_related(

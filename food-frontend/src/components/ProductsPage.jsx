@@ -15,7 +15,7 @@ import { exportJsonToExcel } from "../utils/exportExcel";
 function applyFilters(items, filters) {
   let out = items;
 
-  // тип
+  // группа
   if (filters.typeId) {
     out = out.filter(r => String(r.typeId) === String(filters.typeId));
   }
@@ -69,16 +69,16 @@ export default function ProductsPage() {
   // для модалки
   const [addOpen, setAddOpen] = useState(false);
 
-  // уникальные типы для селекта
+  // уникальные группы для селекта
   const types = useMemo(() => {
     const map = new Map();
-    for (const r of items) if (r.typeId) map.set(r.typeId, r.typeName || `Тип #${r.typeId}`);
+    for (const r of items) if (r.typeId) map.set(r.typeId, r.typeName || `Группа #${r.typeId}`);
     return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a,b)=>String(a.name).localeCompare(String(b.name), "ru"));
   }, [items]);
 
   const allTypes = useMemo(() => {
     const map = new Map();
-    for (const r of allItems) if (r.typeId) map.set(r.typeId, r.typeName || `Тип #${r.typeId}`);
+    for (const r of allItems) if (r.typeId) map.set(r.typeId, r.typeName || `Группа #${r.typeId}`);
     return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a,b)=>String(a.name).localeCompare(String(b.name), "ru"));
   }, [allItems]);
 
@@ -121,7 +121,7 @@ export default function ProductsPage() {
       }
       const next = { ...prev };
       next[typeKey] = Array.from(current);
-      // если все сняли – можно удалить запись, чтобы «нет фильтра» = «все подтипы»
+      // если все сняли – можно удалить запись, чтобы «нет фильтра» = «все подгруппы»
       if (next[typeKey].length === 0) delete next[typeKey];
       return next;
     });
@@ -148,13 +148,13 @@ export default function ProductsPage() {
     return applySort(f, sort);
   }, [items, filters, sort]);
 
-  // группировка по типам
+  // группировка по группам
   const groups = useMemo(() => {
   const byType = new Map();
 
   for (const r of filteredSorted) {
     const typeKey = r.typeId ?? `type:${r.typeName ?? "?"}`;
-    const typeName = r.typeName || `Тип #${r.typeId ?? "?"}`;
+    const typeName = r.typeName || `Группа #${r.typeId ?? "?"}`;
 
     if (!byType.has(typeKey)) {
       byType.set(typeKey, {
@@ -167,7 +167,7 @@ export default function ProductsPage() {
     const typeGroup = byType.get(typeKey);
 
     const subtypeKey = r.subtypeId ?? `sub:${r.subtypeName ?? "?"}`;
-    const subtypeName = r.subtypeName || `Подтип #${r.subtypeId ?? "?"}`;
+    const subtypeName = r.subtypeName || `Подгруппа #${r.subtypeId ?? "?"}`;
 
     if (!typeGroup.subMap.has(subtypeKey)) {
       typeGroup.subMap.set(subtypeKey, {
@@ -194,8 +194,8 @@ export default function ProductsPage() {
 
     const rows = filteredSorted.map(item => {
       const row = {
-        "Тип": item.typeName || "",
-        "Подтип": item.subtypeName || "",
+        "Группа": item.typeName || "",
+        "Подгруппа": item.subtypeName || "",
         "Продукт": item.name || "",
         "Продукт общепита": item.isComplex ? "Да" : "Нет",
       };
@@ -259,7 +259,7 @@ export default function ProductsPage() {
       <main>
         <header className="page-header">
           {/* Ряд 1: заголовок + действия */}
-          <h1 className="page-title">Справочник химического состава</h1>
+          <h1 className="page-title">Справочник хим. состава пищевых продуктов</h1>
 
           <div className="header-actions">
             <button className="btn" onClick={() => setCalcOpen(true)}>🧮 Калькулятор пищевой ценности</button>
@@ -314,7 +314,7 @@ export default function ProductsPage() {
 
               return (
                 <section key={typeKey} style={{ marginBottom: 32 }}>
-                  {/* Шапка типа + фильтры по подтипам */}
+                  {/* Шапка группы + фильтры по подгруппам */}
                   <div
                     style={{
                       display: "flex",
@@ -327,7 +327,7 @@ export default function ProductsPage() {
                     <h2 style={{ margin: 0 }}>{typeName}</h2>
 
                     <div style={{ fontSize: 13, color: "#444" }}>
-                      <div style={{ marginBottom: 4 }}>Выберите подтипы для отображения:</div>
+                      <div style={{ marginBottom: 4 }}>Выберите подгруппы для отображения:</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                         {subgroups.map(sg => {
                           const id = sg.subtypeId;
@@ -380,7 +380,7 @@ export default function ProductsPage() {
                     </div>
                   </div>
 
-                  {/* Подтипы этого типа, с учётом фильтра */}
+                  {/* Подгруппы этой группы, с учётом фильтра */}
                   {visibleSubgroups.map(({ subtypeId, subtypeName, items }) => {
                     return (
                       <div key={`${typeKey}::${subtypeId ?? subtypeName}`} style={{ marginLeft: 16, marginBottom: 16 }}>
