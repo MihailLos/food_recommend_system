@@ -26,7 +26,7 @@ export const ALL_COLUMNS = [
   { key: "niacin_index",    label: "Ниациновый эквив., мг", shortLabel: "НЭ, мг", tooltip: "Ниациновый эквивалент", type: "number" },
   { key: "nlc_g",           label: "НЖК, г",                  type: "number" },
   { key: "pufa_g",          label: "ПНЖК, г",                 type: "number" },
-  { key: "cholesterol_g",   label: "Холестерин, г",           type: "number" },
+  { key: "cholesterol_g",   label: "Холестерин, мг",          type: "number" },
   { key: "organic_acids_g", label: "Орг. кислоты, г",         type: "number" },
   { key: "alcohol_pct",     label: "Алк., %",                 type: "number" },
 ];

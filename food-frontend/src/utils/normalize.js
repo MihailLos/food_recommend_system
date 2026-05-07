@@ -56,7 +56,7 @@ export function normalizeProduct(p) {
 
     nlc_g:            pick(fa, "nlc_g", "NLC (g)"),
     pufa_g:           pick(fa, "pufa_g", "PUFA (g)"),
-    cholesterol_g:    pick(fa, "cholesterol_g", "Cholesterin (g)"),
+    cholesterol_g:    pick(fa, "cholesterol_g", "cholesterol_mg", "Cholesterin (g)"),
 
     organic_acids_g:  pick(other, "organic_acids_g", "Organic_Acids (g)"),
     alcohol_pct:      pick(other, "alcohol_pct", "Alcohol (pct)"),

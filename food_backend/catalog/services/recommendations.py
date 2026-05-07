@@ -1,624 +1,715 @@
-from dataclasses import dataclass
+from statistics import median
 from typing import Dict, List, Optional, Tuple
 
-from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 
+from catalog.models import (
+    ConsumerGoal,
+    ConsumerProfile,
+    FoodProducts,
+    GoalNutrientPreference,
+    NutrientDictionary,
+)
 from catalog.utils.allergens import get_allergens_for_product
 from catalog.utils.child_rules import pick_not_child_rule
-
-from catalog.models import FoodProducts, ConsumerProfile, ConsumerGoal, GoalNutrientPreference, NutrientDictionary
-from catalog.models import NutrientStats, Cart, CartItem
 from catalog.utils.targets import compute_targets_for_profile
 
 ADULT_SODIUM_NORM_MG_DAY = 1300.0
+ADULT_CHOLESTEROL_NORM_MG_DAY = 300.0
 SALT_EQUIVALENT_FACTOR = 2.5
 
-@dataclass
-class ColorResult:
-    color: str  # green|yellow|red|blocked
-    reasons: List[str]
-
-@dataclass
-class BaseSignal:
-    code: str                      # "energy_kcal", "fats_g", ...
-    value_100g: Optional[float]
-    target_day: Optional[float]
-    share: Optional[float]         # value_100g / target_day
-    share_pct: Optional[float]     # share*100
-    level: Optional[str]           # "low" | "medium" | "high" | None
-
-def clamp01(x: float) -> float:
-    if x < 0:
-        return 0.0
-    if x > 1:
-        return 1.0
-    return x
-
-def score_more(share: Optional[float], good_share: float) -> Optional[float]:
-    if share is None or good_share <= 0:
-        return None
-    return clamp01(float(share) / float(good_share))
-
-
-def score_less(share: Optional[float], max_share: float) -> Optional[float]:
-    if share is None or max_share <= 0:
-        return None
-    return clamp01(1.0 - float(share) / float(max_share))
-
-
-def shares_100g(base: Dict[str, Optional[float]], targets_day: Dict[str, float]) -> Dict[str, Optional[float]]:
-    out: Dict[str, Optional[float]] = {}
-    for code, v in base.items():
-        day_key = {
-            "energy_kcal": "energy_kcal_day",
-            "protein_g": "protein_g_day",
-            "fats_g": "fat_g_day",
-            "carbs_g": "carb_g_day",
-            "na_mg": "na_mg_day",
-            "nlc_g": "nlc_g_day",
-        }.get(code)
-        if not day_key:
-            out[code] = None
-            continue
-        day = targets_day.get(day_key)
-        if v is None or day in (None, 0):
-            out[code] = None
-        else:
-            out[code] = float(v) / float(day)
-    return out
-
-BASE_DAY_KEYS = {
-    "energy_kcal": "energy_kcal_day",
-    "protein_g": "protein_g_day",
-    "fats_g": "fat_g_day",
-    "carbs_g": "carb_g_day",
-    "na_mg": "na_mg_day",
-    "nlc_g": "nlc_g_day",
+GROUP_ALIASES = {
+    "fatacids": "fat_acids",
+    "other": "other_nutrients",
 }
 
-def base_score_personal(goal_type: Optional[str], base: Dict[str, Optional[float]], targets_day: Dict[str, float]) -> Tuple[float, List[dict]]:
-    sh = shares_100g(base, targets_day)
-    matched: List[dict] = []
+BASE_PREFERRED_CODES = {
+    "protein_g",
+    "dietary_fiber_g",
+    "pufa_g",
+    "a_mg",
+    "beta_carotene_mg",
+    "b1_mg",
+    "b2_mg",
+    "c_mg",
+    "niacin_index",
+    "ca_mg",
+    "fe_mg",
+    "k_mg",
+    "mg_mg",
+    "p_mg",
+}
 
-    energy_s = score_less(sh.get("energy_kcal"), 0.10)
-    fat_s = score_less(sh.get("fats_g"), 0.10)
-    carb_s = score_less(sh.get("carbs_g"), 0.10)
-    na_s = score_less(sh.get("na_mg"), 0.10)
-    prot_s = score_more(sh.get("protein_g"), 0.10)
+BASE_RESTRICTED_CODES = {
+    "nlc_g",
+    "mds_g",
+    "na_mg",
+    "cholesterol_g",
+}
 
-    weights = []
-    parts = []
+CLASS_META = {
+    "best_fit": {"label": "Наиболее подходит", "color": "green", "rank": 3},
+    "limited_fit": {"label": "Подходит с ограничениями", "color": "yellow", "rank": 2},
+    "not_recommended": {"label": "Не рекомендуется", "color": "red", "rank": 1},
+    "excluded": {"label": "Исключено", "color": "blocked", "rank": 0},
+}
 
-    def add(code: str, direction: str, s: Optional[float], w: float):
-        matched.append({
-            "code": code, 
-            "direction": direction, 
-            "share": sh.get(code), 
-            "weight": w,
-            "value": base.get(code),
-            "norm": sh.get(code),
-            "contrib": None if s is None else w * s
-        })
-        if s is None:
-            return
-        weights.append(w)
-        parts.append(w * s)
+VITAMIN_TARGET_NAMES = {
+    "a_mg": "A_Vitamin (mg)",
+    "beta_carotene_mg": "Beta_Carotene (mg)",
+    "b1_mg": "B1_Vitamin (mg)",
+    "b2_mg": "B2_Vitamin (mg)",
+    "c_mg": "C_Vitamin (mg)",
+    "niacin_index": "Niacin_Index",
+}
 
-    if goal_type == "lose_weight":
-        add("energy_kcal", "less", energy_s, 3.0)
-        add("fats_g", "less", fat_s, 2.0)
-        add("carbs_g", "less", carb_s, 2.0)
-        add("na_mg", "less", na_s, 1.0)
-        add("protein_g", "more", prot_s, 2.0)
-    elif goal_type == "gain_muscle":
-        add("energy_kcal", "more", score_more(sh.get("energy_kcal"), 0.15), 2.0)
-        add("protein_g", "more", prot_s, 3.0)
-        add("na_mg", "less", na_s, 1.0)
-        add("fats_g", "less", score_less(sh.get("fats_g"), 0.15), 1.0)
-    else:
-        add("energy_kcal", "less", energy_s, 2.0)
-        add("na_mg", "less", na_s, 1.0)
-        add("protein_g", "more", prot_s, 1.0)
-
-    if not weights:
-        return 0.0, matched
-    return float(sum(parts) / sum(weights)), matched
+MINERAL_TARGET_NAMES = {
+    "na_mg": "Na (mg)",
+    "k_mg": "K (mg)",
+    "ca_mg": "Ca (mg)",
+    "mg_mg": "Mg (mg)",
+    "p_mg": "P (mg)",
+    "fe_mg": "Fe (mg)",
+}
 
 
-def pref_score_personal(
-    prefs: List[GoalNutrientPreference],
-    product: FoodProducts,
-    stats_map: Dict[str, NutrientStats],
-) -> Tuple[float, List[dict]]:
-    """
-    Score user nutrient preferences using p05/p95 normalization (like preference_score_goal),
-    and return matched list with value/norm/contrib filled.
-    """
-    if not prefs:
-        return 0.0, []
-
-    raw = [priority_weight(getattr(p, "priority", None)) for p in prefs]
-    s = sum(raw) or 1.0
-    weights = [w / s for w in raw]
-
-    total = 0.0
-    matched: List[dict] = []
-
-    for pref, w in zip(prefs, weights):
-        nd: NutrientDictionary = pref.nutrient_code
-        code = nd.code
-        direction = (pref.direction or "").strip().lower()
-
-        related = getattr(product, nd.source_group, None)
-        x = None
-        if related is not None:
-            x = getattr(related, nd.source_field, None)
-        value = float(x) if x is not None else None
-
-        st = stats_map.get(code)
-        xn = norm_p05_p95(value, st.p05 if st else None, st.p95 if st else None)
-
-        if xn is None:
-            contrib = None
-        else:
-            contrib = w * (xn if direction == "more" else (1.0 - xn))
-            total += contrib
-
-        matched.append(
-            dict(
-                code=code,
-                runame=getattr(nd, "ru_name", None),
-                direction=direction,
-                priority=pref.priority,
-                weight=w,
-                value=value,
-                norm=xn,
-                contrib=contrib,
-                has_stats=bool(st and getattr(st, "n", 0) > 0),
-                stats_n=getattr(st, "n", 0) if st else 0,
-            )
-        )
-
-    return float(total), matched
-
-def norm_p05_p95(x: Optional[float], p05: Optional[float], p95: Optional[float]) -> Optional[float]:
-    if x is None or p05 is None or p95 is None:
+def _safe_float(value) -> Optional[float]:
+    if value in (None, ""):
         return None
-    if p95 == p05:
-        return 1.0 if x >= p95 else 0.0
-    return clamp01((x - p05) / (p95 - p05))
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
-def priority_weight(priority: Optional[int]) -> float:
-    # 1 (самый важный) -> 3, 2 -> 2, 3 -> 1
-    if priority is None:
-        return 1.0
-    p = int(priority)
-    if p <= 1:
-        return 3.0
-    if p == 2:
-        return 2.0
-    return 1.0
 
-def get_base_nutrients(p: FoodProducts) -> Dict[str, Optional[float]]:
-    macros = getattr(p, "macros", None)
-    minerals = getattr(p, "minerals", None)
-    fatacids = getattr(p, "fat_acids", None)
-
+def _product_payload(product: FoodProducts) -> dict:
+    subtype = getattr(product, "subtype", None)
+    product_type = getattr(product, "type", None)
     return {
-        "protein_g": float(getattr(macros, "protein_g_field", None)) if macros and getattr(macros, "protein_g_field", None) is not None else None,
-        "fats_g": float(getattr(macros, "fats_g_field", None)) if macros and getattr(macros, "fats_g_field", None) is not None else None,
-        "carbs_g": float(getattr(macros, "carbs_g_field", None)) if macros and getattr(macros, "carbs_g_field", None) is not None else None,
-        "energy_kcal": float(getattr(macros, "energy_value_kcal_field", None)) if macros and getattr(macros, "energy_value_kcal_field", None) is not None else None,
-        "na_mg": float(getattr(minerals, "na_mg_field", None)) if minerals and getattr(minerals, "na_mg_field", None) is not None else None,
-        "nlc_g": float(getattr(fatacids, "nlc_g_field", None)) if fatacids and getattr(fatacids, "nlc_g_field", None) is not None else None,
+        "id": product.id,
+        "name": product.name,
+        "subtype_id": getattr(subtype, "id", None),
+        "subtype_name": getattr(subtype, "name", None),
+        "type_id": getattr(product_type, "id", None),
+        "type_name": getattr(product_type, "name", None),
     }
 
-def level_by_share(share: Optional[float]) -> Optional[str]:
-    if share is None:
+
+def _resolve_related(product: FoodProducts, source_group: str):
+    rel_name = GROUP_ALIASES.get(source_group, source_group)
+    return getattr(product, rel_name, None)
+
+
+def get_nutrient_value(product: FoodProducts, nd: NutrientDictionary) -> Optional[float]:
+    related = _resolve_related(product, nd.source_group)
+    if related is None:
         return None
-    if share >= 0.25:
-        return "high"
-    if share >= 0.10:
-        return "medium"
-    return "low"
+    return _safe_float(getattr(related, nd.source_field, None))
 
-def make_base_signals(base: Dict[str, Optional[float]], targetsday: Dict[str, float]) -> List[dict]:
-    sh = shares_100g(base, targetsday)  # доли value_100g/target_day (0..inf)
-    out = []
-    for code, daykey in [
-        ("energy_kcal", "energy_kcal_day"),
-        ("protein_g", "protein_g_day"),
-        ("fats_g", "fat_g_day"),
-        ("carbs_g", "carb_g_day"),
-        ("na_mg", "na_mg_day"),
-    ]:
-        share = sh.get(code)  # 0..inf или None
-        out.append({
-            "code": code,
-            "value_100g": base.get(code),
-            "target_day": targetsday.get(daykey),
-            "share_pct": None if share is None else float(share) * 100.0,
-            "level": level_by_share(share),
-        })
+
+def build_targets_day_from_profile_targets(targets: Dict) -> Dict[str, float]:
+    minerals = targets.get("target_minerals_day") or {}
+    fat_acids = targets.get("target_fat_acids_day") or {}
+    na = minerals.get("Na (mg)") or minerals.get("Na") or minerals.get("Натрий") or minerals.get("na_mg")
+
+    out = {
+        "energy_kcal": float(targets["target_energy_kcal_day"]),
+        "protein_g": float(targets["target_macros_g_day"]["protein_g"]),
+        "fats_g": float(targets["target_macros_g_day"]["fat_g"]),
+        "carbs_g": float(targets["target_macros_g_day"]["carb_g"]),
+        "dietary_fiber_g": float((targets.get("target_fiber_g_day") or {}).get("min") or 0),
+        "na_mg": float(na) if na not in (None, "", 0) else ADULT_SODIUM_NORM_MG_DAY,
+        "cholesterol_g": float(targets.get("target_cholesterol_mg_day") or ADULT_CHOLESTEROL_NORM_MG_DAY),
+    }
+    out["salt_eq_g"] = round((out["na_mg"] / 1000.0) * SALT_EQUIVALENT_FACTOR, 2)
+    out["nlc_g"] = float(fat_acids.get("nlc_g") or round(out["energy_kcal"] * 0.10 / 9.0, 2))
+    out["pufa_g"] = float(fat_acids.get("pufa_g") or round(out["energy_kcal"] * 0.10 / 9.0, 2))
+
+    for code, name in VITAMIN_TARGET_NAMES.items():
+        value = (targets.get("target_vitamins_day") or {}).get(name)
+        if value not in (None, "", 0):
+            out[code] = float(value)
+
+    for code, name in MINERAL_TARGET_NAMES.items():
+        value = minerals.get(name)
+        if value not in (None, "", 0):
+            out[code] = float(value)
+
     return out
 
-
-def build_base_signals(
-    base: Dict[str, Optional[float]],
-    targets_day: Dict[str, float],
-) -> List[BaseSignal]:
-    out: List[BaseSignal] = []
-    for code, day_key in BASE_DAY_KEYS.items():
-        v = base.get(code)
-        day = targets_day.get(day_key)
-
-        if v is None or day in (None, 0):
-            share = None
-            share_pct = None
-            level = None
-        else:
-            share = float(v) / float(day)
-            share_pct = share * 100.0
-            level = level_by_share(share)
-
-        out.append(
-            BaseSignal(
-                code=code,
-                value_100g=v if v is None else float(v),
-                target_day=None if day in (None, 0) else float(day),
-                share=share,
-                share_pct=share_pct,
-                level=level,
-            )
-        )
-    return out
-
-
-def traffic_color_base_personal(base: Dict[str, Optional[float]], targets_day: Dict[str, float]) -> ColorResult:
-    reasons: List[str] = []
-    levels: Dict[str, Optional[str]] = {}
-
-    def add(code: str, value_100g: Optional[float], day_limit: Optional[float]):
-        if value_100g is None or day_limit is None or day_limit == 0:
-            levels[code] = None
-            reasons.append(f"{code}: no_data")
-            return
-        share = float(value_100g) / float(day_limit)
-        lv = level_by_share(share)
-        levels[code] = lv
-        reasons.append(f"{code}: {lv} ({share*100:.1f}%/100g)")
-
-    add("energy_kcal", base.get("energy_kcal"), targets_day.get("energy_kcal_day"))
-    add("fats_g", base.get("fats_g"), targets_day.get("fat_g_day"))
-    add("carbs_g", base.get("carbs_g"), targets_day.get("carb_g_day"))
-    add("na_mg", base.get("na_mg"), targets_day.get("na_mg_day"))
-
-    if any(lv == "high" for lv in levels.values() if lv):
-        return ColorResult(color="red", reasons=reasons)
-    if any(lv == "medium" for lv in levels.values() if lv):
-        return ColorResult(color="yellow", reasons=reasons)
-    return ColorResult(color="green", reasons=reasons)
-
-def color_rank(c: Optional[str]) -> int:
-    order = {"green": 0, "yellow": 1, "red": 2, "blocked": 3, None: -1}
-    return order.get(c, 9)
-
-
-def worse_color(a: str, b: Optional[str]) -> str:
-    if b is None:
-        return a
-    return a if color_rank(a) >= color_rank(b) else b
-
-
-def pref_color_from_matched(matched: List[dict]) -> Tuple[Optional[str], List[str]]:
-    """
-    Персональный цвет: насколько продукт НЕ соответствует предпочтениям.
-    Использует norm (0..1) и weight. None не учитываем.
-    """
-    if not matched:
-        return None, []
-
-    penalties = []
-    total_w = 0.0
-
-    for m in matched:
-        xn = m.get("norm", None)
-        w = float(m.get("weight", 0.0) or 0.0)
-        direction = (m.get("direction") or "").strip().lower()
-
-        if xn is None or w <= 0:
-            continue
-
-        # penalty: 0 хорошо, 1 плохо
-        if direction == "less":
-            pen = float(xn)          # чем больше нутриента, тем хуже
-        else:  # "more"
-            pen = 1.0 - float(xn)    # чем меньше нутриента, тем хуже
-
-        penalties.append((w, pen))
-        total_w += w
-
-    if total_w <= 0:
-        return None, ["preferences: no_data"]
-
-    pref_penalty = sum(w * pen for w, pen in penalties) / total_w
-
-    # coverage относительно общего числа preferences (включая те, где norm=None)
-    coverage = len(penalties) / max(1, len(matched))
-
-    reasons = [f"preferences_penalty: {pref_penalty:.3f}", f"preferences_coverage: {coverage:.2f}"]
-
-    # если данных мало — не красим в red, максимум yellow + reason
-    if coverage < 0.5:
-        return "yellow", reasons + ["preferences: insufficient_data"]
-
-    if pref_penalty >= 0.66:
-        return "red", reasons
-    if pref_penalty >= 0.33:
-        return "yellow", reasons
-    return "green", reasons
-
-def preference_score(goal: Optional[ConsumerGoal], product: FoodProducts, stats_map: Dict[str, NutrientStats]) -> Tuple[float, List[dict]]:
-    if not goal:
-        return 0.0, []
-
-    prefs = list(goal.nutrient_preferences.select_related("nutrient_code").all())
-    if not prefs:
-        return 0.0, []
-
-    # raw weights -> normalized
-    raw = [priority_weight(p.priority) for p in prefs]
-    s = sum(raw) or 1.0
-    weights = [w / s for w in raw]
-
-    matched = []
-    total = 0.0
-
-    for pref, w in zip(prefs, weights):
-        nd: NutrientDictionary = pref.nutrient_code
-        # достаём значение нутриента через sourcegroup/sourcefield
-        related = getattr(product, nd.source_group, None)
-        x = None
-        if related is not None:
-            x = getattr(related, nd.source_field, None)
-            x = float(x) if x is not None else None
-
-        st = stats_map.get(nd.code)
-        xn = norm_p05_p95(x, st.p05 if st else None, st.p95 if st else None)
-
-        if xn is None:
-            contrib = 0.0
-        else:
-            if pref.direction == "more":
-                contrib = w * xn
-            else:  # "less"
-                contrib = w * (1.0 - xn)
-
-        total += contrib
-        matched.append({
-            "code": nd.code,
-            "ru_name": nd.ru_name,
-            "direction": pref.direction,
-            "priority": pref.priority,
-            "value": x,
-            "norm": xn,
-            "weight": w,
-            "contrib": contrib,
-            "has_stats": bool(st and st.n > 0),
-            "stats_n": st.n if st else 0,
-        })
-
-    return float(total), matched
 
 def is_blocked(profile: ConsumerProfile, product: FoodProducts) -> Tuple[bool, List[str]]:
-    # Аллергены
-    prod_allergens = get_allergens_for_product(product)  # у вас возвращает список аллергенов/правил
-    profile_allergen_ids = set(profile.profile_allergens.values_list("allergen_id", flat=True))
+    prod_allergens = get_allergens_for_product(product)
+    if not hasattr(profile, "_recommendation_allergen_ids_cache"):
+        profile._recommendation_allergen_ids_cache = set(
+            profile.profile_allergens.values_list("allergen_id", flat=True)
+        )
+    profile_allergen_ids = profile._recommendation_allergen_ids_cache
     prod_allergen_ids = set()
-    for a in prod_allergens:
-        # если getallergensforproduct возвращает dict/obj - адаптируйте
-        if isinstance(a, dict) and "id" in a:
-            prod_allergen_ids.add(int(a["id"]))
-        elif hasattr(a, "id"):
-            prod_allergen_ids.add(int(a.id))
+    for allergen in prod_allergens:
+        if isinstance(allergen, dict) and "id" in allergen:
+            prod_allergen_ids.add(int(allergen["id"]))
+        elif hasattr(allergen, "id"):
+            prod_allergen_ids.add(int(allergen.id))
 
     if profile_allergen_ids & prod_allergen_ids:
-        return True, ["Аллерген профиля присутствует в продукте"]
+        return True, ["Продукт исключён: содержит аллерген, отмеченный в профиле пользователя."]
 
-    # Детские ограничения
     if profile.has_minor_children:
         rule, _level = pick_not_child_rule(product)
         if rule is not None:
-            return True, ["Запрещено для детского питания по правилам NotChildProducts"]
+            return True, ["Продукт исключён: не подходит для выбранного критерия организации питания детей."]
 
     return False, []
 
-def build_targets_day_from_profile_targets(targets: Dict) -> Dict[str, float]:
-    out = {
-        "energy_kcal_day": float(targets["target_energy_kcal_day"]),
-        "protein_g_day": float(targets["target_macros_g_day"]["protein_g"]),
-        "fat_g_day": float(targets["target_macros_g_day"]["fat_g"]),
-        "carb_g_day": float(targets["target_macros_g_day"]["carb_g"]),
+
+def _goal_energy_role(goal_type: Optional[str]) -> Optional[str]:
+    if goal_type == ConsumerGoal.GOAL_LOSE_WEIGHT:
+        return "restricted"
+    if goal_type == ConsumerGoal.GOAL_GAIN_MUSCLE:
+        return "preferred"
+    return None
+
+
+def _build_default_roles(
+    goal_type: Optional[str],
+    nutrient_map: Dict[str, NutrientDictionary],
+    targets_day: Dict[str, float],
+) -> Dict[str, str]:
+    roles: Dict[str, str] = {}
+
+    for code in BASE_PREFERRED_CODES:
+        if code in nutrient_map and code in targets_day:
+            roles[code] = "preferred"
+
+    for code in BASE_RESTRICTED_CODES:
+        if code in nutrient_map:
+            roles[code] = "restricted"
+
+    energy_role = _goal_energy_role(goal_type)
+    if energy_role and "energy_kcal" in nutrient_map:
+        roles["energy_kcal"] = energy_role
+
+    return roles
+
+
+def _build_active_roles(
+    goal: Optional[ConsumerGoal],
+    prefs: List[GoalNutrientPreference],
+    nutrient_map: Dict[str, NutrientDictionary],
+    targets_day: Dict[str, float],
+) -> Dict[str, str]:
+    replace_base = bool(getattr(goal, "preferences_replace_base", False)) if goal else False
+    roles = {} if replace_base else _build_default_roles(getattr(goal, "goal_type", None), nutrient_map, targets_day)
+
+    for pref in prefs:
+        code = pref.nutrient_code_id
+        if code not in nutrient_map:
+            continue
+        roles[code] = "preferred" if pref.direction == "more" else "restricted"
+
+    return roles
+
+
+def _comparison_group_key(product: FoodProducts) -> Tuple[str, Optional[int]]:
+    if getattr(product, "subtype_id", None):
+        return ("subtype", int(product.subtype_id))
+    type_id = getattr(product, "type_id", None) or getattr(getattr(product, "type", None), "id", None)
+    return ("type", int(type_id) if type_id else None)
+
+
+def _fetch_comparison_pools(products: List[FoodProducts]) -> Dict[Tuple[str, Optional[int]], List[FoodProducts]]:
+    subtype_ids = {int(p.subtype_id) for p in products if getattr(p, "subtype_id", None)}
+    type_ids = {
+        int(getattr(p, "type_id", None) or getattr(getattr(p, "type", None), "id", None))
+        for p in products
+        if not getattr(p, "subtype_id", None) and (getattr(p, "type_id", None) or getattr(getattr(p, "type", None), "id", None))
     }
 
-    # натрий: сначала пытаемся взять из target_minerals_day, потом fallback
-    minerals = targets.get("target_minerals_day") or {}
-    na = minerals.get("Na") or minerals.get("Натрий") or minerals.get("na_mg")
+    pools: Dict[Tuple[str, Optional[int]], List[FoodProducts]] = {}
 
-    out["na_mg_day"] = float(na) if na not in (None, "", 0) else ADULT_SODIUM_NORM_MG_DAY
-    out["salt_eq_g_day"] = round((out["na_mg_day"] / 1000.0) * SALT_EQUIVALENT_FACTOR, 2)
+    if subtype_ids:
+        subtype_products = list(
+            FoodProducts.objects.filter(subtype_id__in=subtype_ids)
+            .select_related("subtype", "subtype__product_type")
+            .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")
+        )
+        for product in subtype_products:
+            pools.setdefault(("subtype", int(product.subtype_id)), []).append(product)
 
-    # насыщенные жирные кислоты: пока fallback, если в targets их ещё нет
-    nlc = targets.get("target_fat_acids_day", {}).get("nlc_g")
-    if nlc not in (None, "", 0):
-        out["nlc_g_day"] = float(nlc)
+    if type_ids:
+        type_products = list(
+            FoodProducts.objects.filter(subtype__product_type_id__in=type_ids)
+            .select_related("subtype", "subtype__product_type")
+            .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")
+        )
+        for product in type_products:
+            product_type_id = getattr(product, "type_id", None) or getattr(getattr(product, "type", None), "id", None)
+            if product_type_id:
+                pools.setdefault(("type", int(product_type_id)), []).append(product)
+
+    return pools
+
+
+def _median(values: List[float]) -> Optional[float]:
+    if not values:
+        return None
+    return float(median(values))
+
+
+def _compute_quartiles(values: List[float]) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    if not values:
+        return None, None, None
+
+    ordered = sorted(float(v) for v in values)
+    q2 = _median(ordered)
+    if q2 is None:
+        return None, None, None
+
+    n = len(ordered)
+    mid = n // 2
+    if n % 2 == 0:
+        lower = ordered[:mid]
+        upper = ordered[mid:]
     else:
-        # временный безопасный fallback
-        out["nlc_g_day"] = round(out["energy_kcal_day"] * 0.10 / 9.0, 2)
+        lower = ordered[:mid]
+        upper = ordered[mid + 1 :]
 
-    return out
+    q1 = _median(lower) if lower else ordered[0]
+    q3 = _median(upper) if upper else ordered[-1]
+    return q1, q2, q3
+
+
+def _build_percentile_map(products: List[FoodProducts], nd: NutrientDictionary) -> Dict[int, float]:
+    values = []
+    for product in products:
+        value = get_nutrient_value(product, nd)
+        if value is not None:
+            values.append((product.id, float(value)))
+
+    if not values:
+        return {}
+
+    values.sort(key=lambda pair: pair[1])
+    total = len(values)
+    percentile_map: Dict[int, float] = {}
+
+    i = 0
+    while i < total:
+        j = i
+        while j + 1 < total and values[j + 1][1] == values[i][1]:
+            j += 1
+
+        count_less = i
+        count_equal = j - i + 1
+        q = (count_less + 0.5 * count_equal) / float(total)
+        for idx in range(i, j + 1):
+            percentile_map[values[idx][0]] = q
+        i = j + 1
+
+    return percentile_map
+
+
+def _build_score_percentile_map(values_by_product: Dict[int, float]) -> Dict[int, float]:
+    if not values_by_product:
+        return {}
+
+    ordered = sorted(values_by_product.items(), key=lambda pair: pair[1])
+    total = len(ordered)
+    percentile_map: Dict[int, float] = {}
+
+    i = 0
+    while i < total:
+        j = i
+        while j + 1 < total and ordered[j + 1][1] == ordered[i][1]:
+            j += 1
+
+        count_less = i
+        count_equal = j - i + 1
+        q = (count_less + 0.5 * count_equal) / float(total)
+        for idx in range(i, j + 1):
+            percentile_map[ordered[idx][0]] = q
+        i = j + 1
+
+    return percentile_map
+
+
+def _format_level(share_pct: Optional[float]) -> Optional[str]:
+    if share_pct is None:
+        return None
+    if share_pct < 10:
+        return "низкий вклад"
+    if share_pct < 25:
+        return "умеренный вклад"
+    return "высокий вклад"
+
+
+def _build_signal(
+    product: FoodProducts,
+    code: str,
+    role: str,
+    nd: NutrientDictionary,
+    percentile_q: float,
+    targets_day: Dict[str, float],
+    source: str,
+) -> dict:
+    value_100g = get_nutrient_value(product, nd)
+    target_day = targets_day.get(code)
+    share = None
+    if value_100g is not None and target_day not in (None, 0):
+        share = float(value_100g) / float(target_day)
+    direction = "preferred" if role == "preferred" else "restricted"
+    correspondence_a = percentile_q if role == "preferred" else 1.0 - percentile_q
+    share_pct = None if share is None else share * 100.0
+
+    return {
+        "code": code,
+        "ru_name": nd.ru_name,
+        "unit": nd.unit,
+        "direction": direction,
+        "value_100g": value_100g,
+        "target_day": target_day,
+        "daily_share": share,
+        "daily_share_pct": share_pct,
+        "percentile_q": percentile_q,
+        "correspondence_a": correspondence_a,
+        "source": source,
+        "level": _format_level(share_pct),
+    }
+
+
+def _classify(score_s: Optional[float], qua1: Optional[float], qua3: Optional[float]) -> Tuple[str, str, str]:
+    if score_s is None or qua1 is None or qua3 is None:
+        meta = CLASS_META["limited_fit"]
+        return "limited_fit", meta["label"], meta["color"]
+    if score_s >= qua3:
+        meta = CLASS_META["best_fit"]
+        return "best_fit", meta["label"], meta["color"]
+    if score_s <= qua1:
+        meta = CLASS_META["not_recommended"]
+        return "not_recommended", meta["label"], meta["color"]
+    meta = CLASS_META["limited_fit"]
+    return "limited_fit", meta["label"], meta["color"]
+
+
+def _make_blocked_item(product: FoodProducts, reasons: List[str]) -> dict:
+    meta = CLASS_META["excluded"]
+    return {
+        "product": _product_payload(product),
+        "class_code": "excluded",
+        "class_label": meta["label"],
+        "color": meta["color"],
+        "reasons": reasons,
+        "score_components": {
+            "index_s": None,
+            "score_percent_100": None,
+            "percentile_score": None,
+            "qua1": None,
+            "qua2": None,
+            "qua3": None,
+        },
+        "matched_preferences": [],
+        "explain": {
+            "class_code": "excluded",
+            "class_label": meta["label"],
+            "color": meta["color"],
+            "score_index_s": None,
+            "score_percent_100": None,
+            "comparison_scope": None,
+            "comparison_group": None,
+            "quartiles": {"qua1": None, "qua2": None, "qua3": None},
+            "signals": [],
+            "base_signals": [],
+            "summary": {
+                "positive_reasons": [],
+                "limiting_reasons": reasons,
+                "text_explanation": "Продукт исключён из рекомендаций по правилам безопасности профиля.",
+            },
+            "method": {
+                "basis": "hard_profile_constraints",
+            },
+        },
+    }
+
+
+def _build_group_metrics(
+    profile: ConsumerProfile,
+    group_products: List[FoodProducts],
+    active_roles: Dict[str, str],
+    nutrient_map: Dict[str, NutrientDictionary],
+    targets_day: Dict[str, float],
+    prefs_by_code: Dict[str, GoalNutrientPreference],
+) -> Dict[int, dict]:
+    blocked_cache = {product.id: is_blocked(profile, product) for product in group_products}
+    allowed_products = [product for product in group_products if not blocked_cache[product.id][0]]
+
+    percentile_maps: Dict[str, Dict[int, float]] = {}
+    signal_map: Dict[int, List[dict]] = {}
+    score_map: Dict[int, float] = {}
+
+    if not active_roles:
+        return {
+            product.id: {
+                "signals": [],
+                "score_index_s": None,
+                "score_percent_100": None,
+                "qua1": None,
+                "qua2": None,
+                "qua3": None,
+            }
+            for product in allowed_products
+        }
+
+    for code in active_roles:
+        nd = nutrient_map.get(code)
+        if nd is None:
+            continue
+        percentile_maps[code] = _build_percentile_map(allowed_products, nd)
+
+    for product in allowed_products:
+        signals: List[dict] = []
+        a_values: List[float] = []
+        for code, role in active_roles.items():
+            nd = nutrient_map.get(code)
+            percentile_q = percentile_maps.get(code, {}).get(product.id)
+            if nd is None or percentile_q is None:
+                continue
+            signal = _build_signal(
+                product=product,
+                code=code,
+                role=role,
+                nd=nd,
+                percentile_q=percentile_q,
+                targets_day=targets_day,
+                source="user" if code in prefs_by_code else "system",
+            )
+            signals.append(signal)
+            a_values.append(signal["correspondence_a"])
+
+        signal_map[product.id] = signals
+        if a_values:
+            score_map[product.id] = float(median(a_values))
+
+    qua1, qua2, qua3 = _compute_quartiles(list(score_map.values()))
+    score_percentile = _build_score_percentile_map(score_map)
+
+    return {
+        product.id: {
+            "signals": signal_map.get(product.id, []),
+            "score_index_s": score_map.get(product.id),
+            "score_percent_100": None
+            if product.id not in score_percentile
+            else round(score_percentile[product.id] * 100.0, 1),
+            "qua1": qua1,
+            "qua2": qua2,
+            "qua3": qua3,
+        }
+        for product in allowed_products
+    }
+
+
+def _summary_from_signals(product: FoodProducts, signals: List[dict], class_label: str) -> dict:
+    preferred = sorted(
+        [s for s in signals if s["direction"] == "preferred"],
+        key=lambda s: (s["correspondence_a"], s["percentile_q"]),
+        reverse=True,
+    )
+    restricted = sorted(
+        [s for s in signals if s["direction"] == "restricted"],
+        key=lambda s: (s["correspondence_a"], -(s["percentile_q"])),
+    )
+
+    positive_reasons = [
+        f"{s['ru_name']}: Q={s['percentile_q']:.3f}, A={s['correspondence_a']:.3f}"
+        for s in preferred[:3]
+    ]
+    limiting_reasons = [
+        f"{s['ru_name']}: Q={s['percentile_q']:.3f}, A={s['correspondence_a']:.3f}"
+        for s in restricted[:3]
+    ]
+
+    parts = [f"Класс рекомендации: «{class_label}»."]
+    if positive_reasons:
+        parts.append("Сильные стороны продукта относительно аналогов: " + "; ".join(positive_reasons) + ".")
+    if limiting_reasons:
+        parts.append("Ограничивающие факторы: " + "; ".join(limiting_reasons) + ".")
+
+    return {
+        "positive_reasons": positive_reasons,
+        "limiting_reasons": limiting_reasons,
+        "text_explanation": " ".join(parts),
+    }
+
 
 def recommend(
-        profile_id: int, 
-        mode: str, 
-        cart_id: Optional[int] = None, 
-        limit: int = 50,
-        q: Optional[str] = None,
-        type_id: Optional[int] = None,
-        subtype_id: Optional[int] = None,
-    ) -> dict:
+    profile_id: int,
+    mode: str,
+    cart_id: Optional[int] = None,
+    limit: int = 50,
+    q: Optional[str] = None,
+    type_id: Optional[int] = None,
+    subtype_id: Optional[int] = None,
+) -> dict:
+    if mode != "catalog":
+        raise ValueError("Новый алгоритм рекомендаций сейчас поддерживает только режим просмотра продуктов.")
+
+    del cart_id  # explicit: unsupported in the current algorithm version
+
     profile = get_object_or_404(ConsumerProfile, pk=profile_id)
     goal = ConsumerGoal.objects.filter(profile=profile, is_active=True).order_by("-id").first()
-
-    stats_rows = NutrientStats.objects.all()
-    stats_map = {s.nutrient_code: s for s in stats_rows}
+    prefs = list(goal.nutrient_preferences.select_related("nutrient_code").all()) if goal else []
+    prefs_by_code = {pref.nutrient_code_id: pref for pref in prefs}
 
     targets = compute_targets_for_profile(profile)
     targets_day = build_targets_day_from_profile_targets(targets)
+    nutrient_rows = NutrientDictionary.objects.filter(is_active=True)
+    nutrient_map = {n.code: n for n in nutrient_rows}
+    active_roles = _build_active_roles(goal, prefs, nutrient_map, targets_day)
 
-    if mode == "cart":
-        if not cart_id:
-            raise ValueError("cart is required for mode=cart")
-        if profile.user_id is None:
-            raise ValueError("cart mode requires a profile linked to a user")
-        cart = get_object_or_404(Cart, pk=cart_id, user=profile.user_id)
-        ids = list(CartItem.objects.filter(cart=cart.id).values_list("food_product_id", flat=True))
-        qs = FoodProducts.objects.filter(id__in=ids)
-    else:
-        qs = FoodProducts.objects.all()
+    qs = FoodProducts.objects.all()
+    if q:
+        qs = qs.filter(name__icontains=q.strip())
+    if subtype_id:
+        qs = qs.filter(subtype_id=subtype_id)
+    elif type_id:
+        qs = qs.filter(subtype__product_type_id=type_id)
 
-        if q:
-            qs = qs.filter(name__icontains=q.strip())
-
-        if subtype_id:
-            qs = qs.filter(subtype_id=subtype_id)
-        elif type_id:
-            qs = qs.filter(subtype__product_type_id=type_id)
-
-    qs = qs.select_related("subtype", "subtype__product_type").prefetch_related(
-        "macros", "minerals", "vitamins", "other_nutrients", "fat_acids"
+    products = list(
+        qs.select_related("subtype", "subtype__product_type")
+        .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")[:2000]
     )
 
+    pools = _fetch_comparison_pools(products)
+    group_metrics: Dict[Tuple[str, Optional[int]], Dict[int, dict]] = {}
+    for key, group_products in pools.items():
+        group_metrics[key] = _build_group_metrics(
+            profile=profile,
+            group_products=group_products,
+            active_roles=active_roles,
+            nutrient_map=nutrient_map,
+            targets_day=targets_day,
+            prefs_by_code=prefs_by_code,
+        )
+
     items = []
-    for p in qs[:2000]:
-        blocked, block_reasons = is_blocked(profile, p)
+    for product in products:
+        blocked, block_reasons = is_blocked(profile, product)
         if blocked:
-            items.append({
-                "product": {
-                    "id": p.id, 
-                    "name": p.name, 
-                    "subtype_id": p.subtype.id,
-                    "subtype_name": p.subtype.name,
-                    "type_id": p.type.id,
-                    "type_name": p.type.name
-                },
-                "color": "blocked",
-                "reasons": block_reasons,
-                "preference_score": 0.0,
-                "matched_preferences": [],
-            })
+            items.append(_make_blocked_item(product, block_reasons))
             continue
 
-        base = get_base_nutrients(p)
-        base_color = traffic_color_base_personal(base, targets_day)
-        base_score, base_matched = base_score_personal(goal.goal_type if goal else None, base, targets_day)
+        group_key = _comparison_group_key(product)
+        metrics = group_metrics.get(group_key, {}).get(product.id, {})
+        signals = metrics.get("signals", [])
+        score_index_s = metrics.get("score_index_s")
+        score_percent_100 = metrics.get("score_percent_100")
+        qua1 = metrics.get("qua1")
+        qua2 = metrics.get("qua2")
+        qua3 = metrics.get("qua3")
+        class_code, class_label, color = _classify(score_index_s, qua1, qua3)
+        summary = _summary_from_signals(product, signals, class_label)
 
-        prefs = list(goal.nutrient_preferences.select_related("nutrient_code").all()) if goal else []
-        if prefs:
-            pref_score, pref_matched = pref_score_personal(prefs, p, stats_map)
-            final_score = 0.6 * base_score + 0.4 * pref_score
-        else:
-            pref_score, pref_matched = 0.0, []
-            final_score = base_score
+        reasons = []
+        if summary["positive_reasons"]:
+            reasons.append("Сильные стороны: " + "; ".join(summary["positive_reasons"]))
+        if summary["limiting_reasons"]:
+            reasons.append("Ограничивающие факторы: " + "; ".join(summary["limiting_reasons"]))
+        if not reasons:
+            reasons.append("По выбранному профилю активные нутриенты для расчёта не определены.")
 
-        matched = base_matched + pref_matched
-        pref_color, pref_reasons = pref_color_from_matched(pref_matched)
-        final_color = worse_color(base_color.color, pref_color)
+        comparison_scope, comparison_id = group_key
+        comparison_name = product.subtype.name if comparison_scope == "subtype" and getattr(product, "subtype", None) else getattr(product, "type_name", None)
+        if comparison_scope == "type":
+            comparison_name = getattr(getattr(product, "type", None), "name", None)
 
-        reasons = list(base_color.reasons)
-        if pref_color is not None:
-            reasons.append(f"pref_color: {pref_color}")
-            reasons.extend(pref_reasons)
+        score_components = {
+            "index_s": score_index_s,
+            "score_percent_100": score_percent_100,
+            "percentile_score": None if score_percent_100 is None else score_percent_100 / 100.0,
+            "qua1": qua1,
+            "qua2": qua2,
+            "qua3": qua3,
+            # aliases for older UI pieces that may still look here
+            "final_score": None if score_percent_100 is None else score_percent_100 / 100.0,
+            "base_score": score_index_s,
+            "preference_score": None if score_percent_100 is None else score_percent_100 / 100.0,
+        }
 
-        signals = build_base_signals(base, targets_day)
-
-        items.append({
-            "product": {
-                "id": p.id, 
-                "name": p.name, 
-                "subtype_id": p.subtype.id,
-                "subtype_name": p.subtype.name,
-                "type_id": p.type.id,
-                "type_name": p.type.name
-            },
-            "color": final_color,
+        item = {
+            "product": _product_payload(product),
+            "class_code": class_code,
+            "class_label": class_label,
+            "color": color,
             "reasons": reasons,
-            "preference_score": float(final_score or 0.0),
-            "score_components": {
-                "base_score": float(base_score),
-                "preference_score": float(pref_score),
-                "final_score": float(final_score),
-            },
-            "matched_preferences": matched,
+            "matched_preferences": [
+                {
+                    "nutrient_code": signal["code"],
+                    "direction": "more" if signal["direction"] == "preferred" else "less",
+                    "source": signal["source"],
+                }
+                for signal in signals
+                if signal["source"] == "user"
+            ],
+            "score_components": score_components,
             "explain": {
-                "score": float(final_score),
-                "color": final_color,
-                "score_components": {
-                    "base_score": float(base_score),
-                    "preference_score": float(pref_score),
-                    "final_score": float(final_score),
+                "class_code": class_code,
+                "class_label": class_label,
+                "color": color,
+                "score_index_s": score_index_s,
+                "score_percent_100": score_percent_100,
+                "comparison_scope": comparison_scope,
+                "comparison_group": {
+                    "id": comparison_id,
+                    "name": comparison_name,
                 },
-                "base_signals": [
-                    {
-                        "code": s.code,
-                        "value_100g": s.value_100g,
-                        "target_day": s.target_day,
-                        "share": s.share,
-                        "share_pct": s.share_pct,
-                        "level": s.level,
-                    }
-                    for s in signals
-                ],
-                "targets_day": {
-                    "energy_kcal": targets_day.get("energy_kcal_day"),
-                    "protein_g": targets_day.get("protein_g_day"),
-                    "fats_g": targets_day.get("fat_g_day"),
-                    "carbs_g": targets_day.get("carb_g_day"),
-                    "na_mg": targets_day.get("na_mg_day"),
-                    "salt_eq_g": targets_day.get("salt_eq_g_day"),
-                    "nlc_g": targets_day.get("nlc_g_day"),
+                "quartiles": {
+                    "qua1": qua1,
+                    "qua2": qua2,
+                    "qua3": qua3,
                 },
+                "active_nutrients_count": len(signals),
+                "signals": signals,
+                "base_signals": signals,
+                "targets_day": targets_day,
                 "targets_meta": {
-                    "macros_mode": targets.get("macros_mode"),
-                    "goal_type": targets.get("goal_type"),
+                    "goal_type": getattr(goal, "goal_type", None),
                     "energy_delta_kcal": targets.get("energy_delta_kcal"),
-                    "has_vitamins_targets": bool(targets.get("target_vitamins_day")),
-                    "has_minerals_targets": bool(targets.get("target_minerals_day")),
+                    "profile_mode": (
+                        "custom_only"
+                        if goal and goal.preferences_replace_base
+                        else ("base_plus_custom" if prefs else "base")
+                    ),
                 },
+                "summary": summary,
                 "method": {
-                    "basis": "per_100g_vs_daily_targets_from_profile_and_mr",
-                    "share_formula": "share = value_100g / target_day",
-                    "level_thresholds": {"low": "<10%", "medium": "10-25%", "high": ">=25%"},
-                    "scoring": {
-                        "less": "clamp01(1 - share/0.10)",
-                        "more": "clamp01(share/0.10)",
-                        "final": "0.6*base_score + 0.4*preference_score (if prefs else base_score)",
-                    },
+                    "basis": "rank_percentile_median_quartile_model",
+                    "percentile_formula": "Q = (count_less + 0.5 * count_equal) / count_known",
+                    "preferred_formula": "A = Q",
+                    "restricted_formula": "A = 1 - Q",
+                    "score_formula": "S = median(A_n)",
+                    "class_formula": "best_fit if S >= Qua3; limited_fit if Qua1 < S < Qua3; not_recommended if S <= Qua1",
                 },
                 "filters": {
                     "q": q or "",
                     "type_id": type_id,
                     "subtype_id": subtype_id,
                 },
-                "catalog_scope": {
-                    "filtered": True,
-                    "mode": "catalog_search"
-                }
             },
-        })
+        }
+        items.append(item)
 
-    items.sort(key=lambda x: (-float(x.get("preference_score") or 0.0), x["product"]["name"]))
+    def sort_key(item: dict):
+        rank = CLASS_META.get(item.get("class_code"), {}).get("rank", -1)
+        score100 = item.get("score_components", {}).get("score_percent_100")
+        index_s = item.get("score_components", {}).get("index_s")
+        return (
+            -rank,
+            -(float(score100) if score100 is not None else -1.0),
+            -(float(index_s) if index_s is not None else -1.0),
+            item["product"]["name"],
+        )
+
+    items.sort(key=sort_key)
     return {
         "profile_id": profile.id,
         "goal_id": goal.id if goal else None,

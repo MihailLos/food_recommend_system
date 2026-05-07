@@ -467,6 +467,10 @@ class ConsumerGoal(models.Model):
     carb_pct = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True, db_column="carb_pct"
     )
+    preferences_replace_base = models.BooleanField(
+        default=False,
+        db_column="preferences_replace_base",
+    )
 
     is_active = models.BooleanField(default=False, db_column="is_active")
 

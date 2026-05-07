@@ -10,6 +10,7 @@ from catalog.models import (
 from catalog.utils.energy_calc import calculate_tdee_for_profile
 
 ADULT_SODIUM_NORM_MG_DAY = 1300.0
+ADULT_CHOLESTEROL_NORM_MG_DAY = 300.0
 
 
 def _find_macro_norm_row(profile: ConsumerProfile) -> MacronutrientsNormsMR:
@@ -165,7 +166,10 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
 
         "target_fat_acids_day": {
             "nlc_g": round(target_energy_kcal_day * 0.10 / 9.0, 2),
+            "pufa_g": round(target_energy_kcal_day * 0.10 / 9.0, 2),
         },
+
+        "target_cholesterol_mg_day": ADULT_CHOLESTEROL_NORM_MG_DAY,
 
         "target_vitamins_day": vitamin_norms,
         "target_minerals_day": {

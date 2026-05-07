@@ -363,6 +363,7 @@ class ConsumerGoalSerializer(serializers.ModelSerializer):
             "protein_pct",
             "fat_pct",
             "carb_pct",
+            "preferences_replace_base",
             "is_active",
             "created_at",
             "updated_at",

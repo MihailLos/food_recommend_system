@@ -129,6 +129,10 @@ function TargetHelp({ type, targets, profile }) {
         <div style={{ marginTop: 6 }}>
           Они рассчитываются из данных профиля, активной цели питания и нормативов МР 2.3.1.0253-21.
         </div>
+        <div style={{ marginTop: 6 }}>
+          Важно: это не просто копия строк МР. Для БЖУ система берёт пропорции из МР и пересчитывает их
+          под персональную целевую энергию пользователя.
+        </div>
       </>
     );
   }
@@ -164,6 +168,9 @@ function TargetHelp({ type, targets, profile }) {
         <div style={{ marginTop: 6 }}>
           Сейчас она равна базе целевой энергии: {targets?.target_energy_base_kcal_day ?? "—"} ккал/сут.
         </div>
+        <div style={{ marginTop: 6 }}>
+          Если цель питания задаёт дефицит или профицит энергии, он уже учтён в этом значении.
+        </div>
       </>
     );
   }
@@ -173,11 +180,15 @@ function TargetHelp({ type, targets, profile }) {
       <>
         <div>
           Если режим ручной, проценты БЖУ взяты из формы цели. Если режим по нормативам МР,
-          проценты рассчитаны из строки нормативной таблицы.
+          проценты рассчитаны из строки нормативной таблицы и затем применены к персональной целевой энергии.
         </div>
         <div style={{ marginTop: 6 }}>
           На строку МР повлияли: пол {profile?.sex === "female" ? "женский" : "мужской"},
           возраст {profile?.age_years ?? debug.age_years} лет, группа труда {debug.work_group_id ?? "—"}.
+        </div>
+        <div style={{ marginTop: 6 }}>
+          Поэтому граммы БЖУ ниже могут отличаться от граммов в таблице МР: МР даёт структуру рациона,
+          а финальные граммы пересчитаны под текущую цель.
         </div>
       </>
     );
@@ -188,11 +199,19 @@ function TargetHelp({ type, targets, profile }) {
       <>
         <div>Проценты показывают, какая доля целевой энергии приходится на белки, жиры и углеводы.</div>
         {targets?.macros_mode === "mr_table" && (
-          <div style={{ marginTop: 6 }}>
-            В МР для текущего профиля найдена строка: энергия {mr.energy_kcal_day} ккал,
-            белок {mr.protein_g_day} г, жиры {mr.fat_g_day} г, углеводы {mr.carb_g_day} г.
-            Из неё получены проценты: Б {pct.protein_pct}% / Ж {pct.fat_pct}% / У {pct.carb_pct}%.
-          </div>
+          <>
+            <div style={{ marginTop: 6 }}>
+              В МР для текущего профиля найдена строка: энергия {mr.energy_kcal_day} ккал,
+              белок {mr.protein_g_day} г, жиры {mr.fat_g_day} г, углеводы {mr.carb_g_day} г.
+            </div>
+            <div style={{ marginTop: 6 }}>
+              Проценты получаются так: белок = г × 4 / энергия × 100,
+              жиры = г × 9 / энергия × 100, углеводы = г × 4 / энергия × 100.
+            </div>
+            <div style={{ marginTop: 6 }}>
+              Для текущей строки: Б {pct.protein_pct}% / Ж {pct.fat_pct}% / У {pct.carb_pct}%.
+            </div>
+          </>
         )}
         {targets?.macros_mode === "manual" && (
           <div style={{ marginTop: 6 }}>
@@ -204,15 +223,39 @@ function TargetHelp({ type, targets, profile }) {
   }
 
   if (type === "protein") {
-    return <div>Белок = {energy} × {pct.protein_pct}% / 4 = {targets?.target_macros_g_day?.protein_g} г/сут.</div>;
+    return (
+      <>
+        <div>Белок считается от персональной целевой энергии, а не берётся готовым числом из МР.</div>
+        <div style={{ marginTop: 6 }}>
+          Белок = {energy} × {pct.protein_pct}% / 4 = {targets?.target_macros_g_day?.protein_g} г/сут.
+        </div>
+        <div style={{ marginTop: 6 }}>4 ккал/г — энергетическая ценность белка.</div>
+      </>
+    );
   }
 
   if (type === "fat") {
-    return <div>Жиры = {energy} × {pct.fat_pct}% / 9 = {targets?.target_macros_g_day?.fat_g} г/сут.</div>;
+    return (
+      <>
+        <div>Жиры считаются от персональной целевой энергии по выбранной доле БЖУ.</div>
+        <div style={{ marginTop: 6 }}>
+          Жиры = {energy} × {pct.fat_pct}% / 9 = {targets?.target_macros_g_day?.fat_g} г/сут.
+        </div>
+        <div style={{ marginTop: 6 }}>9 ккал/г — энергетическая ценность жира.</div>
+      </>
+    );
   }
 
   if (type === "carb") {
-    return <div>Углеводы = {energy} × {pct.carb_pct}% / 4 = {targets?.target_macros_g_day?.carb_g} г/сут.</div>;
+    return (
+      <>
+        <div>Углеводы считаются от персональной целевой энергии по выбранной доле БЖУ.</div>
+        <div style={{ marginTop: 6 }}>
+          Углеводы = {energy} × {pct.carb_pct}% / 4 = {targets?.target_macros_g_day?.carb_g} г/сут.
+        </div>
+        <div style={{ marginTop: 6 }}>4 ккал/г — энергетическая ценность углеводов.</div>
+      </>
+    );
   }
 
   if (type === "sodium") {
@@ -222,12 +265,31 @@ function TargetHelp({ type, targets, profile }) {
         <div style={{ marginTop: 6 }}>
           Если норматив в базе не найден, используется fallback 1300 мг/сут.
         </div>
+        <div style={{ marginTop: 6 }}>
+          В рекомендациях натрий используется как ограничиваемый показатель: чем выше доля натрия в 100 г продукта
+          относительно суточного ориентира, тем выше солевая нагрузка.
+        </div>
       </>
     );
   }
 
   if (type === "nlc") {
-    return <div>НЖК = {energy} × 10% / 9 = {targets?.target_fat_acids_day?.nlc_g} г/сут.</div>;
+    return (
+      <>
+        <div>
+          НЖК — насыщенные жирные кислоты. Это не цель «съесть столько», а верхний ориентир:
+          желательно не превышать это значение.
+        </div>
+        <div style={{ marginTop: 6 }}>
+          10% взято из МР 2.3.1.0253-21: потребление насыщенных жирных кислот должно быть
+          не более 10% калорийности суточного рациона.
+        </div>
+        <div style={{ marginTop: 6 }}>
+          НЖК = {energy} × 10% / 9 = {targets?.target_fat_acids_day?.nlc_g} г/сут.
+        </div>
+        <div style={{ marginTop: 6 }}>9 ккал/г — энергетическая ценность жиров.</div>
+      </>
+    );
   }
 
   return null;
@@ -245,6 +307,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [prefs, setPrefs] = useState([]); // [{ nutrient_code, direction }]
   const [prefsLoading, setPrefsLoading] = useState(false);
   const [prefsSaving, setPrefsSaving] = useState(false);
+  const [profileMode, setProfileMode] = useState("base");
 
   // форма добавления новой preference
   const [newPref, setNewPref] = useState({
@@ -262,6 +325,7 @@ export default function ConsumerGoalsTab({ profileId }) {
     protein_pct: "",
     fat_pct: "",
     carb_pct: "",
+    preferences_replace_base: false,
   });
 
   const selectedGoal = useMemo(
@@ -324,7 +388,9 @@ export default function ConsumerGoalsTab({ profileId }) {
       protein_pct: selectedGoal.protein_pct ?? "",
       fat_pct: selectedGoal.fat_pct ?? "",
       carb_pct: selectedGoal.carb_pct ?? "",
+      preferences_replace_base: Boolean(selectedGoal.preferences_replace_base),
     });
+    setProfileMode(Boolean(selectedGoal.preferences_replace_base) ? "custom_only" : "base");
   }, [selectedGoal]);
 
   useEffect(() => {
@@ -352,12 +418,14 @@ export default function ConsumerGoalsTab({ profileId }) {
         const p = normalizeList(pRaw);
 
         if (!cancelled) {
+          const replaceBase = Boolean(selectedGoal?.preferences_replace_base);
           setPrefs(
             (p || []).map((x) => ({
               nutrient_code: x.nutrient_code,
               direction: x.direction,
             }))
           );
+          setProfileMode(replaceBase ? "custom_only" : ((p || []).length > 0 ? "base_plus_custom" : "base"));
         }
       } catch (e) {
         if (!cancelled) {
@@ -387,6 +455,7 @@ export default function ConsumerGoalsTab({ profileId }) {
       title: form.title || null,
       goal_type: form.goal_type,
       energy_delta_kcal: numOrNull(form.energy_delta_kcal),
+      preferences_replace_base: profileMode === "custom_only",
     };
 
     if (manualMacros) {
@@ -441,17 +510,26 @@ export default function ConsumerGoalsTab({ profileId }) {
       if (!validateManualMacros()) return;
 
       const payload = normalizePayload();
+      let savedGoal = null;
 
       if (selectedGoalId) {
         const updated = await updateGoal(selectedGoalId, payload);
+        savedGoal = updated;
         setGoals((prev) => prev.map((g) => (g.id === selectedGoalId ? updated : g)));
       } else {
         const created = await createGoal(payload);
+        savedGoal = created;
         setGoals((prev) => [created, ...prev]);
         setSelectedGoalId(created.id);
       }
 
+      if (savedGoal?.id) {
+        const prefPayload = profileMode === "base" ? [] : prefs;
+        await replaceGoalPreferences(savedGoal.id, prefPayload);
+      }
+
       await refreshTargets();
+      await loadAll();
     } catch (e) {
       setError(
         e?.response?.data
@@ -464,6 +542,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const handleCreateNew = () => {
     setSelectedGoalId(null);
     setManualMacros(false);
+    setProfileMode("base");
     setPrefs([]);
     setForm({
       title: "",
@@ -472,6 +551,7 @@ export default function ConsumerGoalsTab({ profileId }) {
       protein_pct: "",
       fat_pct: "",
       carb_pct: "",
+      preferences_replace_base: false,
     });
   };
 
@@ -536,8 +616,8 @@ export default function ConsumerGoalsTab({ profileId }) {
     setPrefsSaving(true);
     setError("");
     try {
-      // PUT replace целиком
-      const updated = await replaceGoalPreferences(selectedGoalId, prefs);
+      await updateGoal(selectedGoalId, normalizePayload());
+      const updated = await replaceGoalPreferences(selectedGoalId, profileMode === "base" ? [] : prefs);
       // backend возвращает список — синхронизируемся с ним
       const p = normalizeList(updated);
       setPrefs(
@@ -546,6 +626,7 @@ export default function ConsumerGoalsTab({ profileId }) {
           direction: x.direction,
         }))
       );
+      await loadAll();
     } catch (e) {
       setError(
         e?.response?.data
@@ -560,6 +641,13 @@ export default function ConsumerGoalsTab({ profileId }) {
   const nutrientLabel = (code) => {
     const n = nutrients.find((x) => x.code === code);
     return n ? `${n.ru_name} (${n.unit || "-"})` : code;
+  };
+
+  const handleProfileModeChange = (nextMode) => {
+    setProfileMode(nextMode);
+    if (nextMode === "base") {
+      setPrefs([]);
+    }
   };
 
   const handleSetActive = async (id) => {
@@ -589,6 +677,35 @@ export default function ConsumerGoalsTab({ profileId }) {
   const selectedGoalTitle = selectedGoal
     ? `${selectedGoal.title || goalTypeLabels[selectedGoal.goal_type] || selectedGoal.goal_type}${selectedGoal.energy_delta_kcal ? `, ${selectedGoal.energy_delta_kcal > 0 ? "+" : ""}${selectedGoal.energy_delta_kcal} ккал/сут` : ""}`
     : "Новая цель";
+
+  const basePreferredCodes = [
+    "protein_g",
+    "dietary_fiber_g",
+    "pufa_g",
+    "a_mg",
+    "beta_carotene_mg",
+    "b1_mg",
+    "b2_mg",
+    "c_mg",
+    "niacin_index",
+    "ca_mg",
+    "fe_mg",
+    "k_mg",
+    "mg_mg",
+    "p_mg",
+  ];
+  const baseRestrictedCodes = [
+    "nlc_g",
+    "mds_g",
+    "na_mg",
+    "cholesterol_g",
+  ];
+  const energyModeText =
+    form.goal_type === "lose_weight"
+      ? "Энергетическая ценность дополнительно относится к ограничиваемым."
+      : form.goal_type === "gain_muscle"
+        ? "Энергетическая ценность дополнительно относится к предпочтительным."
+        : "Энергетическая ценность остаётся контрольным показателем и в базовые списки не включается.";
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 16 }}>
@@ -808,7 +925,7 @@ export default function ConsumerGoalsTab({ profileId }) {
 
                 {/* Preferences по нутриентам */}
         <div style={{ marginTop: 18, padding: 12, border: "1px solid #eee", borderRadius: 10, background: "#fff" }}>
-          <div style={{ fontWeight: 700, marginBottom: 10 }}>Предпочтения по нутриентам</div>
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>Нутриентный профиль рекомендации</div>
 
           {!selectedGoalId ? (
             <div style={{ color: "#666", fontSize: 13 }}>
@@ -818,6 +935,58 @@ export default function ConsumerGoalsTab({ profileId }) {
             <div style={{ color: "#666", fontSize: 13 }}>Загрузка...</div>
           ) : (
             <>
+              <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+                <div style={{ fontWeight: 600 }}>Режим работы со списками нутриентов</div>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <input
+                    type="radio"
+                    checked={profileMode === "base"}
+                    onChange={() => handleProfileModeChange("base")}
+                  />
+                  <span>
+                    <strong>Оставить базовый профиль как есть.</strong>
+                    <div style={{ color: "#666", fontSize: 12 }}>
+                      Система использует стандартные списки предпочтительных и ограничиваемых нутриентов для выбранной цели.
+                    </div>
+                  </span>
+                </label>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <input
+                    type="radio"
+                    checked={profileMode === "base_plus_custom"}
+                    onChange={() => handleProfileModeChange("base_plus_custom")}
+                  />
+                  <span>
+                    <strong>Дополнить базовый профиль.</strong>
+                    <div style={{ color: "#666", fontSize: 12 }}>
+                      Базовые списки сохраняются, а ниже можно добавлять или переназначать отдельные нутриенты.
+                    </div>
+                  </span>
+                </label>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <input
+                    type="radio"
+                    checked={profileMode === "custom_only"}
+                    onChange={() => handleProfileModeChange("custom_only")}
+                  />
+                  <span>
+                    <strong>Полностью задать профиль вручную.</strong>
+                    <div style={{ color: "#666", fontSize: 12 }}>
+                      Базовые списки отключаются. В расчёте участвуют только нутриенты, которые вы добавите ниже.
+                    </div>
+                  </span>
+                </label>
+              </div>
+
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: "#fafafa", border: "1px solid #eee" }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>Базовый набор для цели «{goalTypeLabels[form.goal_type] || form.goal_type}»</div>
+                <div style={{ fontSize: 12, color: "#555", marginBottom: 6 }}>{energyModeText}</div>
+                <div style={{ fontSize: 12, color: "#333", lineHeight: 1.5 }}>
+                  <div><strong>Предпочтительные:</strong> {basePreferredCodes.map(nutrientLabel).join(", ")}</div>
+                  <div style={{ marginTop: 4 }}><strong>Ограничиваемые:</strong> {baseRestrictedCodes.map(nutrientLabel).join(", ")}</div>
+                </div>
+              </div>
+
               <div
                 style={{
                   display: "grid",
@@ -828,6 +997,7 @@ export default function ConsumerGoalsTab({ profileId }) {
               >
                 <select
                   style={input}
+                  disabled={profileMode === "base"}
                   value={newPref.nutrient_code}
                   onChange={(e) => setNewPref((p) => ({ ...p, nutrient_code: e.target.value }))}
                 >
@@ -841,6 +1011,7 @@ export default function ConsumerGoalsTab({ profileId }) {
 
                 <select
                   style={input}
+                  disabled={profileMode === "base"}
                   value={newPref.direction}
                   onChange={(e) => setNewPref((p) => ({ ...p, direction: e.target.value }))}
                 >
@@ -848,17 +1019,23 @@ export default function ConsumerGoalsTab({ profileId }) {
                   <option value="less">Меньше</option>
                 </select>
 
-                <button type="button" style={btn} onClick={addPref}>
+                <button type="button" style={btn} onClick={addPref} disabled={profileMode === "base"}>
                   Добавить
                 </button>
               </div>
               <div style={{ color: "#666", fontSize: 12, marginBottom: 10 }}>
-                Эти предпочтения смещают рекомендации: «Больше» повышает оценку продуктов с высоким содержанием выбранного нутриента,
-                «Меньше» — продуктов с низким содержанием. Все выбранные нутриенты учитываются одинаково.
+                Для каждого нутриента направление означает:
+                «Больше» — нутриент считается предпочтительным,
+                «Меньше» — нутриент считается ограничиваемым.
+                Если выбран режим «Оставить базовый профиль как есть», список ниже очищается и в расчёте не используется.
               </div>
 
               {prefs.length === 0 ? (
-                <div style={{ color: "#666", fontSize: 13 }}>Предпочтения не заданы.</div>
+                <div style={{ color: "#666", fontSize: 13 }}>
+                  {profileMode === "base"
+                    ? "Пользовательские настройки не заданы: используется только базовый профиль."
+                    : "Пользовательские нутриенты пока не заданы."}
+                </div>
               ) : (
                 <div style={{ display: "grid", gap: 8 }}>
                   {prefs.map((p) => (
@@ -879,6 +1056,7 @@ export default function ConsumerGoalsTab({ profileId }) {
 
                       <select
                         style={input}
+                        disabled={profileMode === "base"}
                         value={p.direction}
                         onChange={(e) => updatePref(p.nutrient_code, { direction: e.target.value })}
                       >
@@ -889,6 +1067,7 @@ export default function ConsumerGoalsTab({ profileId }) {
                       <button
                         type="button"
                         style={{ ...btn, borderColor: "#e57373" }}
+                        disabled={profileMode === "base"}
                         onClick={() => removePref(p.nutrient_code)}
                       >
                         Удалить
@@ -905,7 +1084,7 @@ export default function ConsumerGoalsTab({ profileId }) {
                   onClick={savePrefs}
                   disabled={prefsSaving}
                 >
-                  {prefsSaving ? "Сохранение..." : "Сохранить предпочтения"}
+                  {prefsSaving ? "Сохранение..." : "Сохранить нутриентный профиль"}
                 </button>
               </div>
             </>

@@ -195,7 +195,7 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
           ["niacin_index", "Ниациновый эквив., мг"],
           ["nlc_g",       "Насыщенные жирные кислоты, г"],
           ["pufa_g",      "Полиненасыщенные жирные кислоты, г"],
-          ["cholesterol_g", "Холестерин, г"],
+          ["cholesterol_g", "Холестерин, мг"],
           ["organic_acids_g", "Органические кислоты, г"],
           ["alcohol_pct", "Алкоголь, %"],
         ].map(([key, label]) => (
