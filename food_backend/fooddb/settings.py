@@ -17,8 +17,7 @@ import environ
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
-    DEBUG=(bool, True),
-    CORS_ALLOW_ALL_ORIGINS=(bool, False),
+    DEBUG=(bool, True)
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -27,8 +26,8 @@ environ.Env.read_env(BASE_DIR / ".env")
 
 
 SECRET_KEY = env("SECRET_KEY", default="dev-key")
-DEBUG = env("DEBUG", default=True)
-ALLOWED_HOSTS = [host for host in env.list("ALLOWED_HOSTS", default=["127.0.0.1", "localhost"]) if host]
+DEBUG = env("DEBUG")
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -48,9 +47,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -58,10 +56,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
-CORS_ALLOWED_ORIGINS = [origin for origin in env.list("CORS_ALLOWED_ORIGINS", default=[]) if origin]
-CORS_ALLOW_ALL_ORIGINS = env("CORS_ALLOW_ALL_ORIGINS", default=DEBUG and not CORS_ALLOWED_ORIGINS)
-CSRF_TRUSTED_ORIGINS = [origin for origin in env.list("CSRF_TRUSTED_ORIGINS", default=[]) if origin]
+CORS_ALLOW_ALL_ORIGINS = True
 
 ROOT_URLCONF = 'fooddb.urls'
 
@@ -86,23 +81,16 @@ WSGI_APPLICATION = 'fooddb.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASE_URL = env("DATABASE_URL", default=None)
-
-if DATABASE_URL:
-    DATABASES = {
-        "default": env.db("DATABASE_URL")
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "HOST": env("DB_HOST", default="localhost"),
+        "PORT": env("DB_PORT", default="5432"),
+        "NAME": env("DB_NAME", default="mihail"),
+        "USER": env("DB_USER", default="postgres"),
+        "PASSWORD": env("DB_PASSWORD", default=""),
     }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "HOST": env("DB_HOST", default="localhost"),
-            "PORT": env("DB_PORT", default="5432"),
-            "NAME": env("DB_NAME", default="mihail"),
-            "USER": env("DB_USER", default="postgres"),
-            "PASSWORD": env("DB_PASSWORD", default=""),
-        }
-    }
+}
 
 
 # Password validation
@@ -140,15 +128,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-USE_X_FORWARDED_HOST = True
-
-if not DEBUG:
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
