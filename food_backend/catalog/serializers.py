@@ -1,10 +1,15 @@
 from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from decimal import Decimal
 from .models import (FoodProductTypes, FoodProducts, Macronutrients, Minerals,
                      Vitamins, OtherNutrients, FatAcids, FoodProductSubtypes, Allergen, ConsumerProfile, WorkActivityGroup,
                      ProfileAllergen, ConsumerGoal, GoalNutrientPreference, NutrientDictionary)
 from catalog.utils.allergens import get_allergens_for_product
 from catalog.utils.child_rules import pick_not_child_rule
 from catalog.utils.energy_calc import calculate_bmi, calculate_tdee_for_profile
+
+User = get_user_model()
 
 # --- справочник типов ---
 class FoodProductTypeSerializer(serializers.ModelSerializer):
@@ -184,7 +189,7 @@ class ConsumerProfileSerializer(serializers.ModelSerializer):
         model = ConsumerProfile
         fields = [
             "id",
-            "user",            # nullable, пока auth нет — можно не слать
+            "user",
 
             "sex",
             "age_years",
@@ -195,13 +200,6 @@ class ConsumerProfileSerializer(serializers.ModelSerializer):
             "work_group",
 
             "has_minor_children",
-
-            "vital_capacity_ml",
-            "hr_rest",
-            "hr_after_squats",
-            "hr_after_1min_rest",
-            "bp_sys",
-            "bp_dia",
 
             "created_at",
             "updated_at",
@@ -214,7 +212,7 @@ class ConsumerProfileSerializer(serializers.ModelSerializer):
             "is_active",
             "display_name",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at", "user"]
 
     def get_allergens(self, obj: ConsumerProfile):
         # через таблицу-связку
@@ -293,6 +291,109 @@ class ConsumerProfileSerializer(serializers.ModelSerializer):
         ]
         if rows:
             ProfileAllergen.objects.bulk_create(rows)
+
+
+class RegisterSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    password = serializers.CharField(write_only=True, style={"input_type": "password"})
+
+    display_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    sex = serializers.ChoiceField(choices=ConsumerProfile.SEX_CHOICES, required=False)
+    age_years = serializers.IntegerField(required=False, min_value=18)
+    height_cm = serializers.IntegerField(required=False, min_value=1)
+    weight_kg = serializers.DecimalField(required=False, max_digits=6, decimal_places=2, min_value=Decimal("0.01"))
+    work_group_id = serializers.PrimaryKeyRelatedField(
+        source="work_group",
+        queryset=WorkActivityGroup.objects.all(),
+        required=False,
+    )
+    has_minor_children = serializers.BooleanField(required=False, default=False)
+    allergen_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=True,
+    )
+
+    PROFILE_CREATE_FIELDS = (
+        "display_name",
+        "sex",
+        "age_years",
+        "height_cm",
+        "weight_kg",
+        "work_group",
+        "has_minor_children",
+    )
+    PROFILE_REQUIRED_FIELDS = ("sex", "age_years", "height_cm", "weight_kg", "work_group")
+
+    def validate_username(self, value):
+        username = value.strip()
+        if not username:
+            raise serializers.ValidationError("Логин не может быть пустым.")
+        if User.objects.filter(username=username).exists():
+            raise serializers.ValidationError("Пользователь с таким логином уже существует.")
+        return username
+
+    def validate_password(self, value):
+        validate_password(value)
+        return value
+
+    def validate(self, attrs):
+        return attrs
+
+    def create(self, validated_data):
+        allergen_ids = list({int(x) for x in validated_data.pop("allergen_ids", [])})
+        profile_payload = {}
+        for field_name in self.PROFILE_CREATE_FIELDS:
+            if field_name in validated_data:
+                profile_payload[field_name] = validated_data.pop(field_name)
+
+        user = User.objects.create_user(
+            username=validated_data["username"],
+            password=validated_data["password"],
+        )
+
+        self.profile_input_provided = bool(profile_payload or allergen_ids)
+        self.profile_created = False
+        self.profile_skipped_incomplete = False
+
+        has_complete_profile_payload = all(
+            profile_payload.get(field_name) not in (None, "")
+            for field_name in self.PROFILE_REQUIRED_FIELDS
+        )
+
+        if has_complete_profile_payload:
+            profile = ConsumerProfile.objects.create(user=user, **profile_payload)
+            if allergen_ids:
+                valid_allergen_ids = set(Allergen.objects.filter(id__in=allergen_ids).values_list("id", flat=True))
+                rows = [
+                    ProfileAllergen(profile=profile, allergen_id=aid)
+                    for aid in allergen_ids
+                    if aid in valid_allergen_ids
+                ]
+                if rows:
+                    ProfileAllergen.objects.bulk_create(rows)
+            self.profile_created = True
+        elif self.profile_input_provided:
+            self.profile_skipped_incomplete = True
+
+        return user
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True, style={"input_type": "password"})
+    remember_me = serializers.BooleanField(required=False, default=False)
+
+
+class CurrentUserSerializer(serializers.ModelSerializer):
+    has_profiles = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "has_profiles"]
+
+    def get_has_profiles(self, obj):
+        return ConsumerProfile.objects.filter(user=obj).exists()
 
 class GoalNutrientPreferenceListSerializer(serializers.ListSerializer):
     def validate(self, data):

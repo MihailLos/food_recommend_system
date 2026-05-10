@@ -335,12 +335,6 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
     weight_kg: 70,
     work_group_id: "",
     has_minor_children: false,
-    vital_capacity_ml: "",
-    hr_rest: "",
-    hr_after_squats: "",
-    hr_after_1min_rest: "",
-    bp_sys: "",
-    bp_dia: "",
     allergen_ids: [],
   });
 
@@ -420,12 +414,6 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
       weight_kg: selected.weight_kg ?? 70,
       work_group_id: selected.work_group?.id ?? "",
       has_minor_children: !!selected.has_minor_children,
-      vital_capacity_ml: selected.vital_capacity_ml ?? "",
-      hr_rest: selected.hr_rest ?? "",
-      hr_after_squats: selected.hr_after_squats ?? "",
-      hr_after_1min_rest: selected.hr_after_1min_rest ?? "",
-      bp_sys: selected.bp_sys ?? "",
-      bp_dia: selected.bp_dia ?? "",
       allergen_ids: (selected.allergens || []).map(a => a.id),
     });
   }, [selected]);
@@ -439,8 +427,6 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
   };
 
   const normalizePayload = () => {
-    // Приводим числовые поля (пустые строки -> null)
-    const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
     return {
       display_name: form.display_name || null,
       sex: form.sex,
@@ -449,13 +435,6 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
       weight_kg: Number(form.weight_kg),
       work_group_id: Number(form.work_group_id),
       has_minor_children: !!form.has_minor_children,
-
-      vital_capacity_ml: numOrNull(form.vital_capacity_ml),
-      hr_rest: numOrNull(form.hr_rest),
-      hr_after_squats: numOrNull(form.hr_after_squats),
-      hr_after_1min_rest: numOrNull(form.hr_after_1min_rest),
-      bp_sys: numOrNull(form.bp_sys),
-      bp_dia: numOrNull(form.bp_dia),
 
       allergen_ids: form.allergen_ids,
     };

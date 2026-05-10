@@ -348,7 +348,7 @@ class BmrNorm(models.Model):
 
 class ConsumerProfile(models.Model):
     """
-    Профиль потребителя (взрослый MVP). user nullable — пока без авторизации можно жить.
+    Профиль потребителя.
     """
     SEX_CHOICES = [
         ("male", "Male"),
@@ -357,7 +357,6 @@ class ConsumerProfile(models.Model):
 
     id = models.BigAutoField(primary_key=True, db_column="ID")
 
-    # user_id nullable: пока auth не сделан — может быть NULL
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True, blank=True,
@@ -381,15 +380,6 @@ class ConsumerProfile(models.Model):
 
     has_minor_children = models.BooleanField(default=False, db_column="Has_Minor_Child")
     calorie_limit_kcal = models.PositiveIntegerField(null=True, blank=True, db_column="Calorie_Limit_Kcal")
-
-    # Показатели для Руфье / давления / ЖЕЛ — опционально
-    vital_capacity_ml = models.PositiveIntegerField(null=True, blank=True, db_column="Vital_Capacity_ml")
-    hr_rest = models.PositiveSmallIntegerField(null=True, blank=True, db_column="Hr_rest")
-    hr_after_squats = models.PositiveSmallIntegerField(null=True, blank=True, db_column="Hr_After_Squats")
-    hr_after_1min_rest = models.PositiveSmallIntegerField(null=True, blank=True, db_column="Hr_After_1min_Rest")
-
-    bp_sys = models.PositiveSmallIntegerField(null=True, blank=True, db_column="Bp_Sys")
-    bp_dia = models.PositiveSmallIntegerField(null=True, blank=True, db_column="Bp_Dia")
 
     created_at = models.DateField(auto_now_add=True, null=True, blank=True, db_column="Created_at")
     updated_at = models.DateField(auto_now_add=True, null=True, blank=True, db_column="Updated_at")

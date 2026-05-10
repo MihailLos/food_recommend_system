@@ -4,6 +4,10 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import get_user_model
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 from .models import (FoodProductTypes, FoodProducts, Macronutrients, Minerals,
                      Vitamins, OtherNutrients, FatAcids, CulinaryProcessingType, Allergen,
@@ -15,6 +19,7 @@ from .serializers import (FoodProductTypeSerializer, FoodProductSerializer,
                           FatAcidsSerializer, AllergenSerializer, 
                           ConsumerProfileSerializer, WorkActivityGroupSerializer,
                           ConsumerGoalSerializer, GoalNutrientPreferenceSerializer, NutrientDictionarySerializer,
+                          RegisterSerializer, LoginSerializer, CurrentUserSerializer,
                           FoodProductSubtypeSerializer)
 from .services.processing_calc import compute_processed_nutrients
 from .services.processing_calc import pick_processing_rule
@@ -25,6 +30,7 @@ import hashlib, json
 
 from rest_framework import status
 from rest_framework import generics
+from rest_framework.exceptions import PermissionDenied
 
 from rest_framework.views import APIView
 from django.db import transaction
@@ -32,6 +38,8 @@ from django.shortcuts import get_object_or_404
 
 from catalog.utils.allergens import get_allergens_for_product
 from catalog.services.recommendations import recommend
+
+User = get_user_model()
 
 class FoodProductTypeViewSet(viewsets.ModelViewSet):
     queryset = FoodProductTypes.objects.all().order_by("id")
@@ -217,33 +225,94 @@ class WorkActivityGroupViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = WorkActivityGroup.objects.all().order_by("id")
     serializer_class = WorkActivityGroupSerializer
 
+
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class CsrfCookieView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"detail": "CSRF cookie set"})
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        if getattr(serializer, "profile_created", False):
+            detail = "Регистрация выполнена. Профиль создан. Теперь войдите в систему."
+        elif getattr(serializer, "profile_skipped_incomplete", False):
+            detail = (
+                "Регистрация выполнена. Профиль пока не создан: для него нужны пол, возраст, рост, вес "
+                "и группа труда. Войдите в систему и заполните профиль во вкладке модуля потребителя."
+            )
+        else:
+            detail = "Регистрация выполнена. Теперь войдите в систему."
+        return Response(
+            {"detail": detail},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = authenticate(
+            request,
+            username=serializer.validated_data["username"],
+            password=serializer.validated_data["password"],
+        )
+        if user is None:
+            return Response(
+                {"detail": "Неверный логин или пароль."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        login(request, user)
+        if serializer.validated_data.get("remember_me"):
+            request.session.set_expiry(60 * 60 * 24 * 30)
+        else:
+            request.session.set_expiry(0)
+
+        return Response(CurrentUserSerializer(user).data)
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        logout(request)
+        return Response({"detail": "Вы вышли из системы."})
+
+
+class CurrentUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(CurrentUserSerializer(request.user).data)
+
 class ConsumerProfileViewSet(viewsets.ModelViewSet):
     """
-    CRUD для профилей.
-    Пока без авторизации можно работать со всеми профилями (для теста).
-    Позже ограничим queryset профилями request.user.
+    CRUD для профилей текущего пользователя.
     """
-    queryset = ConsumerProfile.objects.all().order_by("-id")
     serializer_class = ConsumerProfileSerializer
+    permission_classes = [IsAuthenticated]
 
-    def _scope_qs(self, profile: ConsumerProfile):
-        """
-        Пока нет авторизации:
-        - если profile.user != NULL -> активность в рамках этого user
-        - если user NULL -> считаем "гостевой" областью (все user IS NULL)
-        """
-        if getattr(profile, "user_id", None) is not None:
-            return ConsumerProfile.objects.filter(user_id=profile.user_id)
-        return ConsumerProfile.objects.filter(user__isnull=True)
+    def get_queryset(self):
+        return ConsumerProfile.objects.filter(user=self.request.user).order_by("-id")
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
     @action(detail=False, methods=["get"], url_path="active")
     def active(self, request):
-        """
-        GET /api/consumer/profiles/active/
-        Пока без auth: возвращаем активный guest-профиль (user IS NULL),
-        позже — активный профиль request.user.
-        """
-        qs = ConsumerProfile.objects.filter(user__isnull=True, is_active=True).order_by("-id")
+        qs = self.get_queryset().filter(is_active=True)
         obj = qs.first()
         if not obj:
             return Response({"detail": "Active profile not set"}, status=status.HTTP_404_NOT_FOUND)
@@ -253,10 +322,10 @@ class ConsumerProfileViewSet(viewsets.ModelViewSet):
     def set_active(self, request, pk=None):
         """
         POST /api/consumer/profiles/<id>/set-active/
-        Делает профиль активным (и снимает активность с остальных в этой области).
+        Делает профиль активным внутри области текущего пользователя.
         """
         profile = self.get_object()
-        scope = self._scope_qs(profile)
+        scope = self.get_queryset()
 
         with transaction.atomic():
             scope.update(is_active=False)
@@ -327,16 +396,21 @@ class ConsumerGoalViewSet(viewsets.ModelViewSet):
     /api/consumer/goals/{id}/set-active/ сделать цель активной
     /api/consumer/goals/{id}/preferences/ CRUD предпочтений (list/replace)
     """
-
-    queryset = ConsumerGoal.objects.all().order_by("-id")
     serializer_class = ConsumerGoalSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = ConsumerGoal.objects.filter(profile__user=self.request.user).order_by("-id")
         profile_id = self.request.query_params.get("profile")
         if profile_id:
-            qs = qs.filter(profile_id=profile_id)
+            qs = qs.filter(profile_id=profile_id, profile__user=self.request.user)
         return qs
+
+    def perform_create(self, serializer):
+        profile = serializer.validated_data["profile"]
+        if profile.user_id != self.request.user.id:
+            raise PermissionDenied("Нельзя создавать цели для чужого профиля.")
+        serializer.save()
 
     @action(detail=False, methods=["get"], url_path="active")
     def active(self, request):
@@ -352,7 +426,7 @@ class ConsumerGoalViewSet(viewsets.ModelViewSet):
             )
 
         obj = (
-            ConsumerGoal.objects.filter(profile_id=profile_id, is_active=True)
+            ConsumerGoal.objects.filter(profile_id=profile_id, profile__user=request.user, is_active=True)
             .order_by("-id")
             .first()
         )
@@ -423,8 +497,10 @@ class ConsumerGoalViewSet(viewsets.ModelViewSet):
         return Response(GoalNutrientPreferenceSerializer(qs, many=True).data)
 
 class ProfileTargetsView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, profile_id):
-        profile = get_object_or_404(ConsumerProfile, pk=profile_id)
+        profile = get_object_or_404(ConsumerProfile, pk=profile_id, user=request.user)
         return Response(compute_targets_for_profile(profile))
 
 class NutrientDictionaryViewSet(viewsets.ReadOnlyModelViewSet):
@@ -444,7 +520,7 @@ class NutrientDictionaryViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ("source_group", "sort_order", "ru_name")
 
 class RecommendationsView(APIView):
-    permission_classes = [AllowAny]  # раз вы запретили без авторизации
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         profile_id = request.query_params.get("profile")
@@ -454,6 +530,8 @@ class RecommendationsView(APIView):
         q = request.query_params.get("q")
         type_id = request.query_params.get("type_id")
         subtype_id = request.query_params.get("subtype_id")
+
+        profile = get_object_or_404(ConsumerProfile, pk=int(profile_id), user=request.user)
 
         data = recommend(
             profile_id=int(profile_id),

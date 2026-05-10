@@ -4,7 +4,8 @@ from .views import (FoodProductTypeViewSet, FoodProductViewSet,
                     MacronutrientsViewSet, MineralsViewSet,
                     VitaminsViewSet, OtherNutrientsViewSet, FatAcidsViewSet, AllergenListView, ProductAllergensView,
                     ConsumerProfileViewSet, WorkActivityGroupViewSet, ConsumerGoalViewSet, ProfileTargetsView,
-                    NutrientDictionaryViewSet, RecommendationsView, FoodProductSubtypeViewSet)
+                    NutrientDictionaryViewSet, RecommendationsView, FoodProductSubtypeViewSet,
+                    CsrfCookieView, RegisterView, LoginView, LogoutView, CurrentUserView)
 
 router = DefaultRouter()
 router.register(r"types", FoodProductTypeViewSet)
@@ -23,6 +24,11 @@ router.register(r"nutrients-dictionary", NutrientDictionaryViewSet, basename="nu
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("auth/csrf/", CsrfCookieView.as_view(), name="auth-csrf"),
+    path("auth/register/", RegisterView.as_view(), name="auth-register"),
+    path("auth/login/", LoginView.as_view(), name="auth-login"),
+    path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
+    path("auth/me/", CurrentUserView.as_view(), name="auth-me"),
     path("consumer/profiles/<int:profile_id>/targets/", ProfileTargetsView.as_view(), name="profile-targets"),
     path("consumer/recommendations/", RecommendationsView.as_view()),
 ]
