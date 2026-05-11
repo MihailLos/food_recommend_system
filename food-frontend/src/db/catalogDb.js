@@ -1,6 +1,8 @@
 import Dexie from "dexie";
 
-export const catalogDb = new Dexie("foodCatalogDB");
+// Новое имя БД нужно, потому что Dexie не поддерживает миграцию старой схемы
+// с простым primary key на составной primary key через upgrade.
+export const catalogDb = new Dexie("foodCatalogDBScoped");
 
 // Версия схемы. Если меняешь поля — поднимай номер .version(N)
 catalogDb.version(3).stores({
