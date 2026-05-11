@@ -58,11 +58,24 @@ function applySort(items, sort) {
 }
 
 
-export default function ProductsPage() {
+export default function ProductsPage({ catalogScope, isAuthenticated }) {
   // поиск по серверу как раньше
   const [search, setSearch] = useState("");
   const debounced = useDebounce(search, 300);
-  const { loading, error, items, allItems, saveProduct, addProductLocally, clearAll, reloadOriginal } = useCatalog(debounced);
+  const {
+    loading,
+    error,
+    items,
+    allItems,
+    saveProduct,
+    addProductLocally,
+    clearAll,
+    reloadOriginal,
+    localVersion,
+    remoteVersion,
+    hasUpdate,
+    syncReady,
+  } = useCatalog(debounced, catalogScope);
   const [calcOpen, setCalcOpen] = useState(false);
   const [subtypeFilters, setSubtypeFilters] = useState({});
 
@@ -282,6 +295,41 @@ export default function ProductsPage() {
             </button>
             <button className="btn" onClick={reloadOriginal}>Загрузить исходную базу</button>
             <button type="button" onClick={handleExportCatalog} className="btn">📄 Экспорт таблицы в Excel</button>
+          </div>
+
+          <div
+            style={{
+              marginTop: 10,
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #e0e0e0",
+              background: "#fff",
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: "#444",
+            }}
+          >
+            <div>
+              Локальная база: {isAuthenticated ? "персональная для текущего пользователя" : "временная гостевая сессия"}
+            </div>
+            <div>
+              Scope: <code>{catalogScope}</code>
+            </div>
+            <div>
+              Локальная версия: <strong>{localVersion || "не загружена"}</strong>
+              {syncReady && remoteVersion ? (
+                <> · Серверная версия: <strong>{remoteVersion}</strong></>
+              ) : null}
+            </div>
+            {hasUpdate ? (
+              <div style={{ color: "#8a6d1d", marginTop: 6 }}>
+                База данных на сервере обновилась. Нажмите «Загрузить исходную базу», чтобы подтянуть новую версию.
+              </div>
+            ) : (
+              syncReady && localVersion && remoteVersion && (
+                <div style={{ color: "#1f5f26", marginTop: 6 }}>Локальная база актуальна.</div>
+              )
+            )}
           </div>
 
           {/* Ряд 2: сортировка + поиск */}

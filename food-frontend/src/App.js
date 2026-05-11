@@ -5,6 +5,18 @@ import AuthPage from "./components/Auth/AuthPage";
 import { fetchCsrfCookie, fetchCurrentUser, logoutUser } from "./api/auth";
 import "./styles/header.css";
 
+const GUEST_SCOPE_KEY = "food_catalog_guest_scope";
+
+function ensureGuestCatalogScope() {
+  let scope = sessionStorage.getItem(GUEST_SCOPE_KEY);
+  if (!scope) {
+    const random = Math.random().toString(36).slice(2, 10);
+    scope = `guest:${Date.now()}-${random}`;
+    sessionStorage.setItem(GUEST_SCOPE_KEY, scope);
+  }
+  return scope;
+}
+
 const tabBtn = (active) => ({
   padding: "10px 12px",
   border: "1px solid #ddd",
@@ -20,6 +32,7 @@ export default function App() {
   const [tab, setTab] = useState("auth"); // catalog | consumer | auth
   const [authLoading, setAuthLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [guestCatalogScope, setGuestCatalogScope] = useState(() => ensureGuestCatalogScope());
 
   useEffect(() => {
     let cancelled = false;
@@ -56,8 +69,11 @@ export default function App() {
     } finally {
       setUser(null);
       setTab("auth");
+      setGuestCatalogScope(ensureGuestCatalogScope());
     }
   };
+
+  const catalogScope = user ? `user:${user.id}` : guestCatalogScope;
 
   if (authLoading) {
     return <div style={{ minHeight: "100dvh", background: "#f6f7f9", padding: 24 }}>Загрузка…</div>;
@@ -99,7 +115,7 @@ export default function App() {
       </div>
 
       {/* Контент */}
-      {tab === "catalog" && <ProductsPage />}
+      {tab === "catalog" && <ProductsPage catalogScope={catalogScope} isAuthenticated={Boolean(user)} />}
       {tab === "consumer" && user && <ConsumerPage user={user} />}
       {tab === "auth" && !user && <AuthPage onLogin={handleLogin} />}
     </div>

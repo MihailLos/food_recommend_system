@@ -38,6 +38,14 @@ export async function fetchCatalogExport(search = "") {
   return { version: data.version || headers["x-catalog-version"], items: data.items };
 }
 
+export async function fetchCatalogMeta() {
+  const { data, headers } = await api.get("/api/products/export-meta/");
+  return {
+    version: data.version || headers["x-catalog-version"] || null,
+    items_count: data.items_count ?? null,
+  };
+}
+
 export async function fetchProcessingOptions(productId) {
   const res = await api.get(`/api/products/${productId}/processing-options/`);
   return res.data; // { product_id, options: [...] }

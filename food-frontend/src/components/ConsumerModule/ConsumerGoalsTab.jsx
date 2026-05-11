@@ -482,15 +482,15 @@ export default function ConsumerGoalsTab({ profileId }) {
 
   const normalizePayload = () => {
     const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
-    const rawDelta = numOrNull(form.energy_delta_kcal);
-    const absDelta = rawDelta == null ? null : Math.abs(rawDelta);
+    const rawDelta = form.energy_delta_kcal === "" || form.energy_delta_kcal == null
+      ? 0
+      : Number(form.energy_delta_kcal);
+    const absDelta = Math.abs(rawDelta);
     let signedDelta = absDelta;
 
-    if (absDelta != null) {
-      if (form.goal_type === "lose_weight") signedDelta = -absDelta;
-      else if (form.goal_type === "gain_muscle") signedDelta = absDelta;
-      else signedDelta = energyDirection === "-" ? -absDelta : absDelta;
-    }
+    if (form.goal_type === "lose_weight") signedDelta = -absDelta;
+    else if (form.goal_type === "gain_muscle") signedDelta = absDelta;
+    else signedDelta = energyDirection === "-" ? -absDelta : absDelta;
 
     const payload = {
       profile_id: profileId,
@@ -542,7 +542,7 @@ export default function ConsumerGoalsTab({ profileId }) {
       return false;
     }
 
-    if (form.energy_delta_kcal === "" || !Number.isFinite(Number(form.energy_delta_kcal)) || Number(form.energy_delta_kcal) < 0) {
+    if (form.energy_delta_kcal !== "" && (!Number.isFinite(Number(form.energy_delta_kcal)) || Number(form.energy_delta_kcal) < 0)) {
       setError("Введите корректное изменение целевой энергии.");
       return false;
     }

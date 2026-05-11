@@ -10,7 +10,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from .models import (FoodProductTypes, FoodProducts, Macronutrients, Minerals,
-                     Vitamins, OtherNutrients, FatAcids, CulinaryProcessingType, Allergen,
+                     Vitamins, OtherNutrients, FatAcids, CulinaryProcessingType, Allergen, AllergenProduct, NotChildProduct,
                      ConsumerProfile, WorkActivityGroup, ProfileAllergen, ConsumerGoal, GoalNutrientPreference,
                      NutrientDictionary, FoodProductSubtypes)
 from .serializers import (FoodProductTypeSerializer, FoodProductSerializer,
@@ -34,12 +34,39 @@ from rest_framework.exceptions import PermissionDenied
 
 from rest_framework.views import APIView
 from django.db import transaction
+from django.db.models import Count, Max
 from django.shortcuts import get_object_or_404
 
 from catalog.utils.allergens import get_allergens_for_product
 from catalog.services.recommendations import recommend
 
 User = get_user_model()
+
+
+def _compute_catalog_export_meta():
+    """
+    Быстрая сигнатура каталога для фоновой проверки на фронте.
+    Она существенно дешевле полного экспорта, но не гарантирует обнаружение
+    каждой точечной правки значения внутри строки без изменения состава таблиц.
+    """
+    snapshot = {
+        "products": FoodProducts.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "types": FoodProductTypes.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "subtypes": FoodProductSubtypes.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "macros": Macronutrients.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "minerals": Minerals.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "vitamins": Vitamins.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "other_nutrients": OtherNutrients.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "fat_acids": FatAcids.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "allergen_rules": AllergenProduct.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "not_child_rules": NotChildProduct.objects.aggregate(count=Count("id"), max_id=Max("id")),
+    }
+    version_seed = json.dumps(snapshot, sort_keys=True, ensure_ascii=False, default=str)
+    version = hashlib.sha256(version_seed.encode("utf-8")).hexdigest()[:12]
+    return {
+        "version": version,
+        "items_count": snapshot["products"]["count"] or 0,
+    }
 
 class FoodProductTypeViewSet(viewsets.ModelViewSet):
     queryset = FoodProductTypes.objects.all().order_by("id")
@@ -163,15 +190,18 @@ class FoodProductViewSet(viewsets.ModelViewSet):
         )
         qs = self.filter_queryset(qs).distinct()
         data = FoodProductSerializer(qs, many=True).data
-
-        # Версия зависит от содержимого экспорта, поэтому меняется при правках нутриентов
-        # без изменения текущей схемы БД.
-        version_seed = json.dumps(data, sort_keys=True, ensure_ascii=False, default=str)
-        version = hashlib.sha256(version_seed.encode("utf-8")).hexdigest()[:12]
+        version = _compute_catalog_export_meta()["version"]
 
         # Можно положить версию в заголовок и в тело.
         resp = Response({"version": version, "items": data})
         resp["X-Catalog-Version"] = version
+        return resp
+
+    @action(detail=False, methods=["get"], url_path="export-meta", pagination_class=None)
+    def export_meta(self, request):
+        meta = _compute_catalog_export_meta()
+        resp = Response(meta)
+        resp["X-Catalog-Version"] = meta["version"]
         return resp
 
 class MacronutrientsViewSet(viewsets.ModelViewSet):
