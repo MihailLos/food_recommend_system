@@ -75,6 +75,8 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
     remoteVersion,
     hasUpdate,
     syncReady,
+    statusMessage,
+    isReloading,
   } = useCatalog(debounced, catalogScope);
   const [calcOpen, setCalcOpen] = useState(false);
   const [subtypeFilters, setSubtypeFilters] = useState({});
@@ -293,7 +295,9 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
             >
               Очистить локальную базу
             </button>
-            <button className="btn" onClick={reloadOriginal}>Загрузить исходную базу</button>
+            <button className="btn" onClick={reloadOriginal} disabled={isReloading}>
+              {isReloading ? "Загрузка базы..." : "Загрузить исходную базу"}
+            </button>
             <button type="button" onClick={handleExportCatalog} className="btn">📄 Экспорт таблицы в Excel</button>
           </div>
 
@@ -329,6 +333,9 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
               syncReady && localVersion && remoteVersion && (
                 <div style={{ color: "#1f5f26", marginTop: 6 }}>Локальная база актуальна.</div>
               )
+            )}
+            {statusMessage && (
+              <div style={{ color: "#1f5f26", marginTop: 6 }}>{statusMessage}</div>
             )}
           </div>
 

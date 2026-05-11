@@ -25,6 +25,8 @@ export default function useCatalog(search = "", scope = "guest:default") {
   const [error, setError]     = useState("");
   const [items, setItems]     = useState([]);
   const [allItems, setAllItems] = useState([]);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isReloading, setIsReloading] = useState(false);
   const [localVersion, setLocalVersionState] = useState(null);
   const [remoteVersion, setRemoteVersion] = useState(null);
   const [hasUpdate, setHasUpdate] = useState(false);
@@ -55,20 +57,34 @@ export default function useCatalog(search = "", scope = "guest:default") {
     setLocalVersionState(null);
     setRemoteVersion(null);
     setHasUpdate(false);
+    setStatusMessage("Локальная база очищена.");
   }
 
   // Принудительно загрузить «исходную базу» с сервера и заменить локальную
   async function reloadOriginal() {
-    const { version, items: remoteItemsRaw } = await fetchCatalogExport("");
-    const remoteItems = uniqById(remoteItemsRaw.map(normalizeProduct));
-    await bulkReplace(scope, remoteItems);
-    await setLocalVersion(scope, version);
-    setAllItems(remoteItems);
-    setItems(applyLocalSearch(remoteItems, search));
-    setLocalVersionState(version);
-    setRemoteVersion(version);
-    setHasUpdate(false);
-    setSyncReady(true);
+    setIsReloading(true);
+    setError("");
+    setStatusMessage("");
+    try {
+      const { version, items: remoteItemsRaw } = await fetchCatalogExport("");
+      const remoteItems = uniqById(remoteItemsRaw.map(normalizeProduct));
+      await dbClearScope(scope);
+      await bulkReplace(scope, remoteItems);
+      await setLocalVersion(scope, version);
+
+      const refreshedLocal = uniqById(await getAllProducts(scope));
+      setAllItems(refreshedLocal);
+      setItems(applyLocalSearch(refreshedLocal, search));
+      setLocalVersionState(version);
+      setRemoteVersion(version);
+      setHasUpdate(false);
+      setSyncReady(true);
+      setStatusMessage("Исходная база успешно загружена и заменила локальные изменения.");
+    } catch (e) {
+      setError(e?.message || "Не удалось загрузить исходную базу.");
+    } finally {
+      setIsReloading(false);
+    }
   }
 
   useEffect(() => {
@@ -142,5 +158,7 @@ export default function useCatalog(search = "", scope = "guest:default") {
     remoteVersion,
     hasUpdate,
     syncReady,
+    statusMessage,
+    isReloading,
   };
 }
