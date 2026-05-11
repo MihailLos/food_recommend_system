@@ -26,6 +26,11 @@ const btn = {
   cursor: "pointer",
 };
 
+const passwordInput = {
+  ...input,
+  paddingRight: 92,
+};
+
 const primaryBtn = {
   ...btn,
   borderColor: "#2e7d32",
@@ -48,6 +53,12 @@ const goalHint = {
   border: "1px solid rgba(249,168,37,0.35)",
   color: "#7b5a00",
   fontSize: 13,
+  lineHeight: 1.5,
+};
+
+const passwordRules = {
+  fontSize: 13,
+  color: "#666",
   lineHeight: 1.5,
 };
 
@@ -75,6 +86,8 @@ export default function AuthPage({ onLogin }) {
   const [mode, setMode] = useState("login");
   const [loginForm, setLoginForm] = useState({ username: "", password: "", remember_me: true });
   const [registerForm, setRegisterForm] = useState(initialRegisterForm);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [workGroups, setWorkGroups] = useState([]);
   const [allergens, setAllergens] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -208,12 +221,29 @@ export default function AuthPage({ onLogin }) {
             </div>
             <div style={row} className="app-form-row">
               <label>Пароль</label>
-              <input
-                style={input}
-                type="password"
-                value={loginForm.password}
-                onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))}
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  style={passwordInput}
+                  type={showLoginPassword ? "text" : "password"}
+                  value={loginForm.password}
+                  onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  style={{
+                    ...btn,
+                    position: "absolute",
+                    right: 6,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    padding: "6px 10px",
+                    fontSize: 12,
+                  }}
+                  onClick={() => setShowLoginPassword((prev) => !prev)}
+                >
+                  {showLoginPassword ? "Скрыть" : "Показать"}
+                </button>
+              </div>
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <input
@@ -221,7 +251,7 @@ export default function AuthPage({ onLogin }) {
                 checked={loginForm.remember_me}
                 onChange={(e) => setLoginForm((prev) => ({ ...prev, remember_me: e.target.checked }))}
               />
-              Запомнить пользователя на 30 дней
+              Запомнить пароль
             </label>
             <div>
               <button type="button" style={primaryBtn} onClick={handleLogin} disabled={loading}>
@@ -241,12 +271,33 @@ export default function AuthPage({ onLogin }) {
             </div>
             <div style={row} className="app-form-row">
               <label>Пароль</label>
-              <input
-                style={input}
-                type="password"
-                value={registerForm.password}
-                onChange={(e) => setRegisterForm((prev) => ({ ...prev, password: e.target.value }))}
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  style={passwordInput}
+                  type={showRegisterPassword ? "text" : "password"}
+                  value={registerForm.password}
+                  onChange={(e) => setRegisterForm((prev) => ({ ...prev, password: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  style={{
+                    ...btn,
+                    position: "absolute",
+                    right: 6,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    padding: "6px 10px",
+                    fontSize: 12,
+                  }}
+                  onClick={() => setShowRegisterPassword((prev) => !prev)}
+                >
+                  {showRegisterPassword ? "Скрыть" : "Показать"}
+                </button>
+              </div>
+              <div style={passwordRules}>
+                Пароль должен содержать не менее 8 символов, не быть слишком похожим на логин,
+                не быть слишком распространённым и не состоять только из цифр.
+              </div>
             </div>
 
             <div style={goalHint}>
