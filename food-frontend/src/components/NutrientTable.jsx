@@ -129,6 +129,7 @@ export default function NutrientTable({ items, columns, onSaveRow = async () => 
                     {r.isAllergen && <span title="Содержит аллерген(ы)" style={{ marginLeft: 6 }}>🦠</span>}
                     {r.isChildAllowed && <span title="Подходит для детского питания" style={{ marginLeft: 6 }}>👶</span>}
                   </div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: "#888" }}>ID: {r.id}</div>
                 </div>
                 {!isEdit ? (
                   <button type="button" style={btn} onClick={() => startEdit(r)}>✏️ Изменить</button>
@@ -266,36 +267,39 @@ export default function NutrientTable({ items, columns, onSaveRow = async () => 
                 {/* колонка «Продукт» */}
                 <td style={td}>
                   {!isEdit ? (
-                    <span>
-                      {r.name}
-                      {r.isComplex && (
-                        <span
-                          style={{ marginLeft: 6, cursor: "help" }}
-                          title="Продукт общественного питания"
-                          aria-label="Продукт общественного питания"
-                        >
-                          🍽️
-                        </span>
-                      )}
-                      {r.isAllergen && (
-                        <span
-                          style={{ marginLeft: 6, cursor: "help" }}
-                          title="Содержит аллерген(ы)"
-                          aria-label="Содержит аллерген(ы)"
-                        >
-                          🦠
-                        </span>
-                      )}
-                      {r.isChildAllowed && (
-                        <span
-                          style={{ marginLeft: 6, cursor: "help" }}
-                          title="Может применяться при организации питания детей"
-                          aria-label="Может применяться при организации питания детей"
-                        >
-                          👶
-                        </span>
-                      )}
-                    </span>
+                    <div>
+                      <div>
+                        {r.name}
+                        {r.isComplex && (
+                          <span
+                            style={{ marginLeft: 6, cursor: "help" }}
+                            title="Продукт общественного питания"
+                            aria-label="Продукт общественного питания"
+                          >
+                            🍽️
+                          </span>
+                        )}
+                        {r.isAllergen && (
+                          <span
+                            style={{ marginLeft: 6, cursor: "help" }}
+                            title="Содержит аллерген(ы)"
+                            aria-label="Содержит аллерген(ы)"
+                          >
+                            🦠
+                          </span>
+                        )}
+                        {r.isChildAllowed && (
+                          <span
+                            style={{ marginLeft: 6, cursor: "help" }}
+                            title="Может применяться при организации питания детей"
+                            aria-label="Может применяться при организации питания детей"
+                          >
+                            👶
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: 12, color: "#888" }}>ID: {r.id}</div>
+                    </div>
                   ) : (
                     <input
                       type="text"
