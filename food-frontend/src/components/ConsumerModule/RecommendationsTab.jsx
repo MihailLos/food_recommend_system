@@ -70,6 +70,29 @@ const modalCard = {
   gap: 14,
 };
 
+const loaderOverlay = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(255,255,255,0.72)",
+  backdropFilter: "blur(2px)",
+  zIndex: 1100,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 16,
+};
+
+const loaderCard = {
+  width: "min(460px, 100%)",
+  background: "#fff",
+  borderRadius: 16,
+  border: "1px solid #dfe5dc",
+  boxShadow: "0 12px 28px rgba(0,0,0,0.12)",
+  padding: 20,
+  display: "grid",
+  gap: 12,
+};
+
 function normalizeList(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.results)) return data.results;
@@ -105,6 +128,11 @@ function getRecommendationErrorDetail(error) {
 function score100(item) {
   const value = item?.score_components?.score_percent_100 ?? item?.explain?.score_percent_100;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function summarizeReasons(reasons) {
+  if (!Array.isArray(reasons) || reasons.length === 0) return "не выделены";
+  return reasons.slice(0, 2).join("; ");
 }
 
 function groupLabel(item) {
@@ -262,14 +290,6 @@ function DetailsModal({ item, onClose }) {
           </div>
 
           <div style={{ ...box, padding: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Итоговая оценка продукта</div>
-            <div style={{ fontSize: 24, fontWeight: 700 }}>{fmt(score.index_s, 3)}</div>
-            <div style={{ color: "#666", fontSize: 12, marginTop: 4 }}>
-              Устойчивый итог по всем активным нутриентам продукта.
-            </div>
-          </div>
-
-          <div style={{ ...box, padding: 12 }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>Границы классов в подгруппе</div>
             <div>Нижняя граница: {fmt(quartiles.qua1, 3)}</div>
             <div>Срединная граница: {fmt(quartiles.qua2, 3)}</div>
@@ -322,6 +342,7 @@ export default function RecommendationsTab({ profileId }) {
   const [error, setError] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
   const [hasCalculated, setHasCalculated] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState("Загрузка рекомендаций");
 
   const items = useMemo(() => normalizeList(payload?.items ?? payload), [payload]);
   const profileIdNum = useMemo(() => {
@@ -421,6 +442,7 @@ export default function RecommendationsTab({ profileId }) {
     if (!profileIdNum) return;
 
     setLoading(true);
+    setLoadingLabel("Расчёт рекомендаций");
     setError("");
     try {
       const data = await fetchRecommendations({
@@ -454,6 +476,7 @@ export default function RecommendationsTab({ profileId }) {
     if (!profileIdNum) return;
 
     setLoading(true);
+    setLoadingLabel("Предварительная загрузка рекомендаций");
     setError("");
     try {
       const data = await fetchRecommendations({
@@ -498,6 +521,34 @@ export default function RecommendationsTab({ profileId }) {
 
   return (
     <div className="app-page">
+      {loading && (
+        <div style={loaderOverlay}>
+          <div style={loaderCard}>
+            <div style={{ fontWeight: 700, fontSize: 18 }}>{loadingLabel}</div>
+            <div style={{ color: "#555", lineHeight: 1.5 }}>
+              Пожалуйста, дождитесь завершения расчёта. В это время результаты и статистика обновляются для текущего профиля.
+            </div>
+            <div style={{ height: 12, borderRadius: 999, background: "#edf3ec", overflow: "hidden" }}>
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  background: "linear-gradient(90deg, #2e7d32 0%, #66bb6a 100%)",
+                  animation: "recommendation-loader 1.2s ease-in-out infinite",
+                  transformOrigin: "left center",
+                }}
+              />
+            </div>
+            <style>{`
+              @keyframes recommendation-loader {
+                0% { transform: scaleX(0.18); opacity: 0.55; }
+                50% { transform: scaleX(0.72); opacity: 1; }
+                100% { transform: scaleX(0.18); opacity: 0.55; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
       <div style={{ ...box, padding: 16, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 700 }}>Рекомендации по продуктам</div>
         <div style={{ color: "#666", fontSize: 13, lineHeight: 1.5 }}>
@@ -505,7 +556,13 @@ export default function RecommendationsTab({ profileId }) {
           на 100 г и сравнивается с аналогами своей подгруппы.
         </div>
 
-        <div className="app-filters-grid">
+        <form
+          className="app-filters-grid"
+          onSubmit={(event) => {
+            event.preventDefault();
+            load();
+          }}
+        >
           <div style={{ display: "grid", gap: 6 }}>
             <label>Поиск по названию</label>
             <input
@@ -564,7 +621,7 @@ export default function RecommendationsTab({ profileId }) {
           </div>
 
           <div className="app-header-actions">
-            <button type="button" style={{ ...btn, borderColor: "#2e7d32" }} onClick={load} disabled={loading || filtersLoading}>
+            <button type="submit" style={{ ...btn, borderColor: "#2e7d32" }} disabled={loading || filtersLoading}>
               {loading ? "Загрузка..." : "Рассчитать"}
             </button>
 
@@ -572,7 +629,7 @@ export default function RecommendationsTab({ profileId }) {
               Сбросить
             </button>
           </div>
-        </div>
+        </form>
 
         {error && <div style={{ color: "crimson" }}>{error}</div>}
       </div>
@@ -651,7 +708,7 @@ export default function RecommendationsTab({ profileId }) {
                 <div style={{ fontWeight: 700, color: meta.border }}>{meta.title}: {groupItems.length}</div>
                 <div style={{ display: "grid", gap: 10 }}>
                   {groupItems.map((item) => (
-                    <div
+                    <article
                       key={item.product.id}
                       style={{
                         border: `1px solid ${meta.border}`,
@@ -659,14 +716,36 @@ export default function RecommendationsTab({ profileId }) {
                         borderRadius: 12,
                         padding: 14,
                         display: "grid",
-                        gap: 8,
+                        gap: 10,
                       }}
                     >
-                      <div className="app-card-split">
+                      <div className="app-card-split" style={{ alignItems: "start" }}>
                         <div>
                           <div style={{ fontWeight: 700 }}>{item.product.name}</div>
                           <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
                             {item.product.subtype_name || item.product.type_name || "—"}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 8,
+                              display: "grid",
+                              gap: 6,
+                              color: "#444",
+                              fontSize: 13,
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            <div>
+                              <strong>Итоговый балл:</strong>{" "}
+                              {score100(item) == null ? "—" : `${score100(item).toFixed(1)} / 100`}
+                            </div>
+                            <div>
+                              <strong>Сильные стороны:</strong> {summarizeReasons(item?.explain?.summary?.positive_reasons)}
+                            </div>
+                            <div>
+                              <strong>Ограничивающие факторы:</strong>{" "}
+                              {summarizeReasons(item?.explain?.summary?.limiting_reasons)}
+                            </div>
                           </div>
                           {item.color !== "green" && item.color !== "blocked" && getAlternativeItems(item, enrichedItems).length > 0 && (
                             <div
@@ -689,20 +768,19 @@ export default function RecommendationsTab({ profileId }) {
                           )}
                         </div>
                         <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: 12, color: "#666" }}>Балл среди аналогов</div>
-                          <div style={{ fontSize: 20, fontWeight: 700 }}>
-                            {score100(item) == null ? "—" : `${score100(item).toFixed(1)} / 100`}
+                          <div style={{ fontSize: 12, color: "#666" }}>Класс рекомендации</div>
+                          <div style={{ fontSize: 18, fontWeight: 700, color: meta.border, marginTop: 2 }}>
+                            {item.class_label || meta.title}
                           </div>
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                        <div />
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "center" }}>
                         <button type="button" style={btn} onClick={() => setSelectedItem(item)}>
                           Пояснение расчётов
                         </button>
                       </div>
-                    </div>
+                    </article>
                   ))}
                 </div>
               </div>
