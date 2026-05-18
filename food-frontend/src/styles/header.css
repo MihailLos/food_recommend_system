@@ -36,15 +36,23 @@
   background: #fff;
   border-radius: 8px;
   cursor: pointer;
-  transition: box-shadow .15s ease, transform .05s ease;
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease, transform .08s ease;
   white-space: nowrap;
 }
-.btn:hover { box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+.btn:hover {
+  background: #f4f8f4;
+  border-color: #c7d9ca;
+  box-shadow: 0 4px 14px rgba(0,0,0,.08);
+}
 .btn:active { transform: translateY(1px); }
 .btn-danger {
   border-color: #f4b0b0;
   color: #c62828;
   background: #fff;
+}
+.btn-danger:hover {
+  background: #fff4f4;
+  border-color: #ef9a9a;
 }
 
 /* Десктоп-выравнивание: заголовок слева, все действия справа одной линией */
