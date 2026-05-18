@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchGoals,
   createGoal,
@@ -342,7 +342,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [nutrients, setNutrients] = useState([]);
   const [prefs, setPrefs] = useState([]); // [{ nutrient_code, direction }]
   const [prefsLoading, setPrefsLoading] = useState(false);
-  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("idle");
   const [profileMode, setProfileMode] = useState("base");
   const [energyDirection, setEnergyDirection] = useState("-");
   const [dragTarget, setDragTarget] = useState("");
@@ -359,6 +359,9 @@ export default function ConsumerGoalsTab({ profileId }) {
     carb_pct: "",
     preferences_replace_base: false,
   });
+  const lastSavedGoalRef = useRef(null);
+  const autosaveTimerRef = useRef(null);
+  const editorReadyRef = useRef(false);
 
   const selectedGoal = useMemo(
     () => goals.find((g) => g.id === selectedGoalId) || null,
@@ -371,6 +374,27 @@ export default function ConsumerGoalsTab({ profileId }) {
     if (Array.isArray(data?.items)) return data.items;
     return [];
   };
+
+  const goalDraftHasAnyContent = useCallback(() =>
+    Boolean((form.title || "").trim()) ||
+    form.goal_type !== "maintain" ||
+    String(form.energy_delta_kcal || "") !== "" ||
+    manualMacros ||
+    profileMode !== "base" ||
+    prefs.length > 0,
+  [form, manualMacros, profileMode, prefs.length]);
+
+  const getCurrentPrefsPayload = useCallback(() =>
+    (profileMode === "base" ? [] : prefs)
+      .map((item) => ({
+        nutrient_code: item.nutrient_code,
+        direction: item.direction,
+      }))
+      .sort((a, b) =>
+        String(a.nutrient_code).localeCompare(String(b.nutrient_code), "ru") ||
+        String(a.direction).localeCompare(String(b.direction), "ru")
+      ),
+  [prefs, profileMode]);
 
   const loadAll = async () => {
     if (!profileId) return;
@@ -386,6 +410,11 @@ export default function ConsumerGoalsTab({ profileId }) {
 
       const active = g.find((x) => x.is_active) || g[0] || null;
       setSelectedGoalId(active?.id ?? null);
+      if (g.length === 0) {
+        editorReadyRef.current = true;
+        lastSavedGoalRef.current = null;
+        setSaveStatus("idle");
+      }
 
       const t = await fetchProfileTargets(profileId);
       setTargets(t);
@@ -424,7 +453,17 @@ export default function ConsumerGoalsTab({ profileId }) {
     });
     setProfileMode(Boolean(selectedGoal.preferences_replace_base) ? "custom_only" : "base");
     setEnergyDirection((selectedGoal.energy_delta_kcal ?? 0) < 0 ? "-" : "+");
+    editorReadyRef.current = false;
+    setSaveStatus("idle");
   }, [selectedGoal]);
+
+  useEffect(() => {
+    if (!selectedGoal && goals.length === 0) {
+      editorReadyRef.current = true;
+      lastSavedGoalRef.current = null;
+      setSaveStatus("idle");
+    }
+  }, [selectedGoal, goals.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -452,13 +491,29 @@ export default function ConsumerGoalsTab({ profileId }) {
 
         if (!cancelled) {
           const replaceBase = Boolean(selectedGoal?.preferences_replace_base);
+          const nextProfileMode = replaceBase ? "custom_only" : ((p || []).length > 0 ? "base_plus_custom" : "base");
+          const nextPrefs = (p || []).map((x) => ({
+            nutrient_code: x.nutrient_code,
+            direction: x.direction,
+          }));
           setPrefs(
-            (p || []).map((x) => ({
-              nutrient_code: x.nutrient_code,
-              direction: x.direction,
-            }))
+            nextPrefs
           );
-          setProfileMode(replaceBase ? "custom_only" : ((p || []).length > 0 ? "base_plus_custom" : "base"));
+          setProfileMode(nextProfileMode);
+          lastSavedGoalRef.current = JSON.stringify({
+            goal: {
+              profile_id: profileId,
+              title: selectedGoal?.title || null,
+              goal_type: selectedGoal?.goal_type ?? "maintain",
+              energy_delta_kcal: selectedGoal?.energy_delta_kcal ?? 0,
+              preferences_replace_base: nextProfileMode === "custom_only",
+              protein_pct: selectedGoal?.protein_pct ?? null,
+              fat_pct: selectedGoal?.fat_pct ?? null,
+              carb_pct: selectedGoal?.carb_pct ?? null,
+            },
+            prefs: nextProfileMode === "base" ? [] : nextPrefs,
+          });
+          editorReadyRef.current = true;
         }
       } catch (e) {
         if (!cancelled) {
@@ -480,7 +535,7 @@ export default function ConsumerGoalsTab({ profileId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGoalId]);
 
-  const normalizePayload = () => {
+  const normalizePayload = useCallback(() => {
     const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
     const rawDelta = form.energy_delta_kcal === "" || form.energy_delta_kcal == null
       ? 0
@@ -512,9 +567,9 @@ export default function ConsumerGoalsTab({ profileId }) {
     }
 
     return payload;
-  };
+  }, [energyDirection, form, manualMacros, profileId, profileMode]);
 
-  const validateManualMacros = () => {
+  const validateManualMacros = useCallback(({ silent = false } = {}) => {
     if (!manualMacros) return true;
 
     const p = Number(form.protein_pct);
@@ -523,34 +578,39 @@ export default function ConsumerGoalsTab({ profileId }) {
 
     // требуем, чтобы в manual все 3 были числами
     if (!Number.isFinite(p) || !Number.isFinite(f) || !Number.isFinite(c)) {
-      setError("В ручном режиме заполните проценты Б, Ж, У.");
+      if (!silent) setError("В ручном режиме заполните проценты Б, Ж, У.");
       return false;
     }
 
     const sum = p + f + c;
     if (Math.abs(sum - 100) > 0.01) {
-      setError("Сумма процентов БЖУ должна быть 100.");
+      if (!silent) setError("Сумма процентов БЖУ должна быть 100.");
       return false;
     }
 
     return true;
-  };
+  }, [form.carb_pct, form.fat_pct, form.protein_pct, manualMacros]);
 
-  const validateRequiredFields = () => {
+  const validateRequiredFields = useCallback(({ silent = false } = {}) => {
     if (!form.goal_type) {
-      setError("Выберите цель питания.");
+      if (!silent) setError("Выберите цель питания.");
       return false;
     }
 
     if (form.energy_delta_kcal !== "" && (!Number.isFinite(Number(form.energy_delta_kcal)) || Number(form.energy_delta_kcal) < 0)) {
-      setError("Введите корректное изменение целевой энергии.");
+      if (!silent) setError("Введите корректное изменение целевой энергии.");
       return false;
     }
 
     return true;
-  };
+  }, [form.energy_delta_kcal, form.goal_type]);
 
-  const refreshTargets = async () => {
+  const canAutosaveGoal = useCallback(
+    () => validateRequiredFields({ silent: true }) && validateManualMacros({ silent: true }),
+    [validateManualMacros, validateRequiredFields]
+  );
+
+  const refreshTargets = useCallback(async () => {
     if (!profileId) return;
     const [profileData, t] = await Promise.all([
       fetchProfile(profileId),
@@ -558,43 +618,7 @@ export default function ConsumerGoalsTab({ profileId }) {
     ]);
     setProfile(profileData);
     setTargets(t);
-  };
-
-  const handleSave = async () => {
-    try {
-      setError("");
-      if (!validateRequiredFields()) return;
-      if (!validateManualMacros()) return;
-
-      const payload = normalizePayload();
-      let savedGoal = null;
-
-      if (selectedGoalId) {
-        const updated = await updateGoal(selectedGoalId, payload);
-        savedGoal = updated;
-        setGoals((prev) => prev.map((g) => (g.id === selectedGoalId ? updated : g)));
-      } else {
-        const created = await createGoal(payload);
-        savedGoal = created;
-        setGoals((prev) => [created, ...prev]);
-        setSelectedGoalId(created.id);
-      }
-
-      if (savedGoal?.id) {
-        const prefPayload = profileMode === "base" ? [] : prefs;
-        await replaceGoalPreferences(savedGoal.id, prefPayload);
-      }
-
-      await refreshTargets();
-      await loadAll();
-    } catch (e) {
-      setError(
-        e?.response?.data
-          ? JSON.stringify(e.response.data)
-          : (e?.message || "Ошибка сохранения")
-      );
-    }
-  };
+  }, [profileId]);
 
   const handleCreateNew = () => {
     setSelectedGoalId(null);
@@ -602,6 +626,10 @@ export default function ConsumerGoalsTab({ profileId }) {
     setProfileMode("base");
     setEnergyDirection("-");
     setPrefs([]);
+    setError("");
+    setSaveStatus("idle");
+    lastSavedGoalRef.current = null;
+    editorReadyRef.current = true;
     setForm({
       title: "",
       goal_type: "maintain",
@@ -633,37 +661,6 @@ export default function ConsumerGoalsTab({ profileId }) {
     }
   };
 
-  const savePrefs = async () => {
-    if (!selectedGoalId) {
-      setError("Сначала выберите или создайте цель.");
-      return;
-    }
-
-    setPrefsSaving(true);
-    setError("");
-    try {
-      await updateGoal(selectedGoalId, normalizePayload());
-      const updated = await replaceGoalPreferences(selectedGoalId, profileMode === "base" ? [] : prefs);
-      // backend возвращает список — синхронизируемся с ним
-      const p = normalizeList(updated);
-      setPrefs(
-        (p || []).map((x) => ({
-          nutrient_code: x.nutrient_code,
-          direction: x.direction,
-        }))
-      );
-      await loadAll();
-    } catch (e) {
-      setError(
-        e?.response?.data
-          ? JSON.stringify(e.response.data)
-          : (e?.message || "Ошибка сохранения предпочтений")
-      );
-    } finally {
-      setPrefsSaving(false);
-    }
-  };
-
   const nutrientLabel = (code) => {
     const n = nutrients.find((x) => x.code === code);
     return n ? `${n.ru_name} (${n.unit || "-"})` : code;
@@ -677,6 +674,100 @@ export default function ConsumerGoalsTab({ profileId }) {
       setPrefs([]);
     }
   };
+
+  useEffect(() => {
+    if (loading || !profileId || !editorReadyRef.current) return;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+
+    if (!selectedGoalId && !goalDraftHasAnyContent()) {
+      setSaveStatus("idle");
+      return;
+    }
+
+    if (!canAutosaveGoal()) {
+      setSaveStatus("idle");
+      return;
+    }
+
+    const payload = normalizePayload();
+    const prefPayload = getCurrentPrefsPayload();
+    const nextSignature = JSON.stringify({ goal: payload, prefs: prefPayload });
+
+    if (lastSavedGoalRef.current === nextSignature) {
+      setSaveStatus("saved");
+      return;
+    }
+
+    autosaveTimerRef.current = setTimeout(async () => {
+      try {
+        setError("");
+        setSaveStatus("saving");
+        let savedGoal = null;
+        if (selectedGoalId) {
+          const updated = await updateGoal(selectedGoalId, payload);
+          savedGoal = updated;
+          setGoals((prev) => prev.map((g) => (g.id === selectedGoalId ? updated : g)));
+        } else {
+          const created = await createGoal(payload);
+          savedGoal = created;
+          setGoals((prev) => [created, ...prev]);
+          setSelectedGoalId(created.id);
+        }
+
+        const updatedPrefs = savedGoal?.id
+          ? await replaceGoalPreferences(savedGoal.id, prefPayload)
+          : [];
+        const normalizedPrefs = normalizeList(updatedPrefs).map((item) => ({
+          nutrient_code: item.nutrient_code,
+          direction: item.direction,
+        }));
+        setPrefs(normalizedPrefs);
+        await refreshTargets();
+
+        lastSavedGoalRef.current = JSON.stringify({
+          goal: {
+            ...payload,
+            profile_id: profileId,
+          },
+          prefs: profileMode === "base" ? [] : normalizedPrefs.sort((a, b) =>
+            String(a.nutrient_code).localeCompare(String(b.nutrient_code), "ru") ||
+            String(a.direction).localeCompare(String(b.direction), "ru")
+          ),
+        });
+        setSaveStatus("saved");
+      } catch (e) {
+        setSaveStatus("error");
+        setError(
+          e?.response?.data
+            ? JSON.stringify(e.response.data)
+            : (e?.message || "Ошибка сохранения")
+        );
+      } finally {
+      }
+    }, 900);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, [
+    form,
+    manualMacros,
+    profileMode,
+    prefs,
+    profileId,
+    selectedGoalId,
+    loading,
+    energyDirection,
+    canAutosaveGoal,
+    getCurrentPrefsPayload,
+    goalDraftHasAnyContent,
+    normalizePayload,
+    refreshTargets,
+  ]);
 
   const handleSetActive = async (id) => {
     try {
@@ -949,6 +1040,11 @@ export default function ConsumerGoalsTab({ profileId }) {
             {selectedGoalTitle}
           </div>
           <div className="app-header-actions">
+            <div style={{ fontSize: 12, color: saveStatus === "error" ? "crimson" : "#666", alignSelf: "center" }}>
+              {saveStatus === "saving" && "Сохранение..."}
+              {saveStatus === "saved" && "Сохранено"}
+              {saveStatus === "error" && "Ошибка сохранения"}
+            </div>
             {selectedGoalId && (
               <button
                 type="button"
@@ -958,13 +1054,6 @@ export default function ConsumerGoalsTab({ profileId }) {
                 Удалить
               </button>
             )}
-            <button
-              type="button"
-              style={{ ...btn, borderColor: "#2e7d32" }}
-              onClick={handleSave}
-            >
-              Сохранить
-            </button>
           </div>
         </div>
 
@@ -1140,7 +1229,7 @@ export default function ConsumerGoalsTab({ profileId }) {
 
           {!selectedGoalId ? (
             <div style={{ color: "#666", fontSize: 13 }}>
-              Сначала сохраните/выберите цель, чтобы редактировать предпочтения.
+              Предпочтения сохранятся автоматически после того, как будет создана цель.
             </div>
           ) : prefsLoading ? (
             <div style={{ color: "#666", fontSize: 13 }}>Загрузка...</div>
@@ -1261,17 +1350,6 @@ export default function ConsumerGoalsTab({ profileId }) {
 
                 </>
               )}
-
-              <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  style={{ ...btn, borderColor: "#2e7d32" }}
-                  onClick={savePrefs}
-                  disabled={prefsSaving}
-                >
-                  {prefsSaving ? "Сохранение..." : "Сохранить нутриентный профиль"}
-                </button>
-              </div>
             </>
           )}
         </div>

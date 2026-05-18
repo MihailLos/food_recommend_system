@@ -87,6 +87,21 @@ function fmtPct(value) {
   return `${value.toFixed(1)}%`;
 }
 
+function getRecommendationErrorDetail(error) {
+  const detail =
+    error?.response?.data?.error ||
+    error?.response?.data?.detail ||
+    error?.response?.data?.message ||
+    error?.message ||
+    "Ошибка загрузки рекомендаций.";
+
+  if (String(detail).includes("активная цель питания")) {
+    return "Сначала создайте и активируйте цель питания для выбранного профиля.";
+  }
+
+  return detail;
+}
+
 function score100(item) {
   const value = item?.score_components?.score_percent_100 ?? item?.explain?.score_percent_100;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -419,13 +434,8 @@ export default function RecommendationsTab({ profileId }) {
       setPayload(data);
       setHasCalculated(true);
     } catch (e) {
-      const detail =
-        e?.response?.data?.error ||
-        e?.response?.data?.detail ||
-        e?.response?.data?.message ||
-        e?.message ||
-        "Ошибка загрузки рекомендаций.";
-      setError(detail);
+      setPayload(null);
+      setError(getRecommendationErrorDetail(e));
     } finally {
       setLoading(false);
     }
@@ -456,13 +466,8 @@ export default function RecommendationsTab({ profileId }) {
       });
       setPayload(data);
     } catch (e) {
-      const detail =
-        e?.response?.data?.error ||
-        e?.response?.data?.detail ||
-        e?.response?.data?.message ||
-        e?.message ||
-        "Ошибка загрузки рекомендаций.";
-      setError(detail);
+      setPayload(null);
+      setError(getRecommendationErrorDetail(e));
     } finally {
       setLoading(false);
     }

@@ -362,7 +362,11 @@ class RegisterSerializer(serializers.Serializer):
         )
 
         if has_complete_profile_payload:
-            profile = ConsumerProfile.objects.create(user=user, **profile_payload)
+            profile = ConsumerProfile.objects.create(
+                user=user,
+                is_active=True,
+                **profile_payload,
+            )
             if allergen_ids:
                 valid_allergen_ids = set(Allergen.objects.filter(id__in=allergen_ids).values_list("id", flat=True))
                 rows = [

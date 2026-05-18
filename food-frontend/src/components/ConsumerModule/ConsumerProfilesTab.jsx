@@ -1,5 +1,5 @@
 // src/components/ConsumerPage.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchProfiles,
   createProfile,
@@ -356,6 +356,47 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
     };
 
   const didInitRef = useRef(false);
+  const lastSavedProfileRef = useRef(null);
+  const autosaveTimerRef = useRef(null);
+  const [saveStatus, setSaveStatus] = useState("idle");
+
+  const profileFormHasRequiredData = useCallback((draft) => (
+    Boolean(draft.sex) &&
+    Number.isFinite(Number(draft.age_years)) &&
+    Number(draft.age_years) > 0 &&
+    Number.isFinite(Number(draft.height_cm)) &&
+    Number(draft.height_cm) > 0 &&
+    Number.isFinite(Number(draft.weight_kg)) &&
+    Number(draft.weight_kg) > 0 &&
+    Number.isFinite(Number(draft.work_group_id)) &&
+    Number(draft.work_group_id) > 0
+  ), []);
+
+  const profileFormHasAnyContent = useCallback((draft) => (
+    Boolean((draft.display_name || "").trim()) ||
+    Number(draft.age_years) !== 30 ||
+    Number(draft.height_cm) !== 170 ||
+    Number(draft.weight_kg) !== 70 ||
+    Boolean(draft.work_group_id) ||
+    Boolean(draft.has_minor_children) ||
+    (draft.allergen_ids || []).length > 0
+  ), []);
+
+  const buildProfilePayload = useCallback((draft) => ({
+    display_name: draft.display_name || null,
+    sex: draft.sex,
+    age_years: Number(draft.age_years),
+    height_cm: Number(draft.height_cm),
+    weight_kg: Number(draft.weight_kg),
+    work_group_id: Number(draft.work_group_id),
+    has_minor_children: !!draft.has_minor_children,
+    allergen_ids: [...(draft.allergen_ids || [])].sort((a, b) => a - b),
+  }), []);
+
+  const profilePayloadSignature = useCallback(
+    (draft) => JSON.stringify(buildProfilePayload(draft)),
+    [buildProfilePayload]
+  );
 
   // загрузка справочников + профилей
   useEffect(() => {
@@ -416,7 +457,85 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
       has_minor_children: !!selected.has_minor_children,
       allergen_ids: (selected.allergens || []).map(a => a.id),
     });
-  }, [selected]);
+    lastSavedProfileRef.current = profilePayloadSignature({
+      display_name: selected.display_name ?? "",
+      sex: selected.sex ?? "male",
+      age_years: selected.age_years ?? 30,
+      height_cm: selected.height_cm ?? 170,
+      weight_kg: selected.weight_kg ?? 70,
+      work_group_id: selected.work_group?.id ?? "",
+      has_minor_children: !!selected.has_minor_children,
+      allergen_ids: (selected.allergens || []).map(a => a.id),
+    });
+    setSaveStatus("idle");
+  }, [profilePayloadSignature, selected]);
+
+  useEffect(() => {
+    if (selectedId || loading) return;
+    lastSavedProfileRef.current = null;
+    setSaveStatus("idle");
+  }, [selectedId, loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+
+    if (selectedId == null && !profileFormHasAnyContent(form)) {
+      setSaveStatus("idle");
+      return;
+    }
+
+    if (!profileFormHasRequiredData(form)) {
+      setSaveStatus("idle");
+      return;
+    }
+
+    const nextSignature = profilePayloadSignature(form);
+    if (lastSavedProfileRef.current === nextSignature) {
+      setSaveStatus("saved");
+      return;
+    }
+
+    autosaveTimerRef.current = setTimeout(async () => {
+      try {
+        setError("");
+        setSaveStatus("saving");
+        const payload = buildProfilePayload(form);
+
+        if (selectedId) {
+          const updated = await updateProfile(selectedId, payload);
+          setProfiles((prev) => prev.map((p) => (p.id === selectedId ? updated : p)));
+        } else {
+          const created = await createProfile(payload);
+          setProfiles((prev) => [created, ...prev]);
+          setSelectedId(created.id);
+        }
+
+        lastSavedProfileRef.current = nextSignature;
+        setSaveStatus("saved");
+      } catch (e) {
+        setSaveStatus("error");
+        setError(e?.response?.data ? JSON.stringify(e.response.data) : (e?.message || "Ошибка сохранения"));
+      }
+    }, 900);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, [
+    buildProfilePayload,
+    form,
+    loading,
+    profileFormHasAnyContent,
+    profileFormHasRequiredData,
+    profilePayloadSignature,
+    selectedId,
+    setSelectedId,
+  ]);
 
   const toggleAllergen = (id) => {
     setForm(prev => {
@@ -426,69 +545,20 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
     });
   };
 
-  const normalizePayload = () => {
-    return {
-      display_name: form.display_name || null,
-      sex: form.sex,
-      age_years: Number(form.age_years),
-      height_cm: Number(form.height_cm),
-      weight_kg: Number(form.weight_kg),
-      work_group_id: Number(form.work_group_id),
-      has_minor_children: !!form.has_minor_children,
-
-      allergen_ids: form.allergen_ids,
-    };
-  };
-
-  const handleSave = async () => {
-    try {
-      setError("");
-      if (!form.sex) {
-        setError("Заполните поле «Пол».");
-        return;
-      }
-      if (!Number.isFinite(Number(form.age_years)) || Number(form.age_years) <= 0) {
-        setError("Введите корректный возраст.");
-        return;
-      }
-      if (!Number.isFinite(Number(form.height_cm)) || Number(form.height_cm) <= 0) {
-        setError("Введите корректный рост.");
-        return;
-      }
-      if (!Number.isFinite(Number(form.weight_kg)) || Number(form.weight_kg) <= 0) {
-        setError("Введите корректный вес.");
-        return;
-      }
-      if (!form.work_group_id || !Number.isFinite(Number(form.work_group_id))) {
-        setError("Выберите группу труда.");
-        return;
-      }
-      const payload = normalizePayload();
-
-      if (selectedId) {
-        const updated = await updateProfile(selectedId, payload);
-        setProfiles(prev => prev.map(p => (p.id === selectedId ? updated : p)));
-      } else {
-        const created = await createProfile(payload);
-        setProfiles(prev => [created, ...prev]);
-        setSelectedId(created.id);
-      }
-    } catch (e) {
-      setError(e?.response?.data ? JSON.stringify(e.response.data) : (e?.message || "Ошибка сохранения"));
-    }
-  };
-
   const handleCreateNew = () => {
     setSelectedId(null);
-    setForm(f => ({
-      ...f,
+    setError("");
+    setSaveStatus("idle");
+    setForm({
+      display_name: "",
       sex: "male",
       age_years: 30,
       height_cm: 170,
       weight_kg: 70,
       work_group_id: "",
+      has_minor_children: false,
       allergen_ids: [],
-    }));
+    });
   };
 
   const handleDelete = async () => {
@@ -622,8 +692,12 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
               {profileTitle}
             </div>
             <div className="app-header-actions">
+              <div style={{ fontSize: 12, color: saveStatus === "error" ? "crimson" : "#666", alignSelf: "center" }}>
+                {saveStatus === "saving" && "Сохранение..."}
+                {saveStatus === "saved" && "Сохранено"}
+                {saveStatus === "error" && "Ошибка сохранения"}
+              </div>
               {selectedId && <button style={{ ...btn, borderColor: "#e57373" }} onClick={handleDelete}>Удалить</button>}
-              <button style={{ ...btn, borderColor: "#2e7d32" }} onClick={handleSave}>Сохранить</button>
             </div>
           </div>
 
@@ -692,12 +766,25 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
             )}
 
             <div style={row} className="app-form-row">
-              <label>Есть несовершеннолетние дети</label>
-              <input
-                type="checkbox"
-                checked={form.has_minor_children}
-                onChange={e => setForm({ ...form, has_minor_children: e.target.checked })}
-              />
+              <label>Включить режим подбора продуктов для организации питания детей?</label>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    type="radio"
+                    checked={form.has_minor_children === true}
+                    onChange={() => setForm({ ...form, has_minor_children: true })}
+                  />
+                  Да
+                </label>
+                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    type="radio"
+                    checked={form.has_minor_children === false}
+                    onChange={() => setForm({ ...form, has_minor_children: false })}
+                  />
+                  Нет
+                </label>
+              </div>
             </div>
           </div>
           <div style={{ fontSize: 12, color: "#8a6d1d", marginTop: 6 }}>

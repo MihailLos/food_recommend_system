@@ -338,7 +338,8 @@ class ConsumerProfileViewSet(viewsets.ModelViewSet):
         return ConsumerProfile.objects.filter(user=self.request.user).order_by("-id")
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        is_first_profile = not ConsumerProfile.objects.filter(user=self.request.user).exists()
+        serializer.save(user=self.request.user, is_active=is_first_profile)
 
     @action(detail=False, methods=["get"], url_path="active")
     def active(self, request):
@@ -440,7 +441,8 @@ class ConsumerGoalViewSet(viewsets.ModelViewSet):
         profile = serializer.validated_data["profile"]
         if profile.user_id != self.request.user.id:
             raise PermissionDenied("Нельзя создавать цели для чужого профиля.")
-        serializer.save()
+        is_first_goal = not ConsumerGoal.objects.filter(profile_id=profile.id).exists()
+        serializer.save(is_active=is_first_goal)
 
     @action(detail=False, methods=["get"], url_path="active")
     def active(self, request):
@@ -562,6 +564,16 @@ class RecommendationsView(APIView):
         subtype_id = request.query_params.get("subtype_id")
 
         profile = get_object_or_404(ConsumerProfile, pk=int(profile_id), user=request.user)
+        active_goal_exists = ConsumerGoal.objects.filter(
+            profile_id=profile.id,
+            profile__user=request.user,
+            is_active=True,
+        ).exists()
+        if not active_goal_exists:
+            return Response(
+                {"detail": "Для выбранного профиля не задана активная цель питания."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         data = recommend(
             profile_id=int(profile_id),
