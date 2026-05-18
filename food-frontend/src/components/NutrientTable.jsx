@@ -62,7 +62,7 @@ export default function NutrientTable({ items, columns, onSaveRow = async () => 
     const d = {};
     // редактируем только видимые и раскрытые колонки + name
     d[nameColumn.key] = row[nameColumn.key] ?? "";
-    for (const g of groups) if (openGroups[g.id]) {
+    for (const g of groups) {
       for (const key of g.keys) d[key] = row[key] ?? "";
     }
     setDraft(d);
@@ -132,7 +132,7 @@ export default function NutrientTable({ items, columns, onSaveRow = async () => 
                   <div style={{ marginTop: 4, fontSize: 12, color: "#888" }}>ID: {r.id}</div>
                 </div>
                 {!isEdit ? (
-                  <button type="button" style={btn} onClick={() => startEdit(r)}>✏️ Изменить</button>
+                  <button type="button" style={btn} onClick={() => startEdit(r)} title="Изменить локально" aria-label="Изменить локально">✏️</button>
                 ) : (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <button type="button" style={btn} onClick={saveEdit}>💾 Сохранить</button>
@@ -253,8 +253,8 @@ export default function NutrientTable({ items, columns, onSaveRow = async () => 
                 {/* ячейка с кнопками */}
                 <td style={{ ...td, minWidth: 140 }}>
 	                  {!isEdit ? (
-	                    <button type="button" style={btn} onClick={() => startEdit(r)} title="Изменить локально">
-	                      ✏️ Изменить локально
+	                    <button type="button" style={btn} onClick={() => startEdit(r)} title="Изменить локально" aria-label="Изменить локально">
+	                      ✏️
 	                    </button>
 	                  ) : (
 	                    <div style={{ display: "flex", gap: 6 }}>

@@ -77,6 +77,7 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
     syncReady,
     statusMessage,
     isReloading,
+    reloadProgress,
   } = useCatalog(debounced, catalogScope);
   const [calcOpen, setCalcOpen] = useState(false);
   const [subtypeFilters, setSubtypeFilters] = useState({});
@@ -240,6 +241,59 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
 
   return (
     <div className="app-products-layout" data-sidebar={sidebarOpen ? "open" : "closed"}>
+      {isReloading && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(255,255,255,0.72)",
+            backdropFilter: "blur(2px)",
+            zIndex: 1200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              background: "#fff",
+              border: "1px solid #dfe5dc",
+              borderRadius: 16,
+              boxShadow: "0 12px 28px rgba(0,0,0,0.12)",
+              padding: 20,
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 18 }}>Загрузка исходной базы</div>
+            <div style={{ color: "#555", lineHeight: 1.5 }}>
+              Текущий локальный каталог будет заменён исходной версией с сервера.
+            </div>
+            <div
+              style={{
+                height: 12,
+                borderRadius: 999,
+                background: "#edf3ec",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${Math.max(0, Math.min(100, reloadProgress || 0))}%`,
+                  height: "100%",
+                  background: "linear-gradient(90deg, #2e7d32 0%, #66bb6a 100%)",
+                  transition: "width 180ms ease",
+                }}
+              />
+            </div>
+            <div style={{ color: "#2e7d32", fontWeight: 700, textAlign: "right" }}>
+              {Math.max(0, Math.min(100, reloadProgress || 0))}%
+            </div>
+          </div>
+        </div>
+      )}
       {isMobileLayout && sidebarOpen && (
         <div className="app-mobile-backdrop" onClick={() => setSidebarOpen(false)} />
       )}
@@ -285,16 +339,6 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
             </button>
 
             <button className="btn" onClick={() => setAddOpen(true)}>Добавить локально</button>
-            <button
-              className="btn btn-danger"
-              onClick={async () => {
-                if (window.confirm("Очистить локальную базу? Это удалит все локальные данные.")) {
-                  await clearAll();
-                }
-              }}
-            >
-              Очистить локальную базу
-            </button>
             <button className="btn" onClick={reloadOriginal} disabled={isReloading}>
               {isReloading ? "Загрузка базы..." : "Загрузить исходную базу"}
             </button>
@@ -337,6 +381,27 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
             {statusMessage && (
               <div style={{ color: "#1f5f26", marginTop: 6 }}>{statusMessage}</div>
             )}
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: "pointer", color: "#666" }}>Сервисные действия</summary>
+              <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                <div style={{ color: "#666", fontSize: 12 }}>
+                  Очистка локальной базы нужна только для полного сброса текущего локального каталога,
+                  например если вы хотите начать с пустой базы или исправить повреждённый локальный кеш.
+                </div>
+                <div>
+                  <button
+                    className="btn btn-danger"
+                    onClick={async () => {
+                      if (window.confirm("Очистить локальную базу? Это удалит все локальные данные текущего каталога.")) {
+                        await clearAll();
+                      }
+                    }}
+                  >
+                    Очистить локальную базу
+                  </button>
+                </div>
+              </div>
+            </details>
           </div>
 
           {/* Ряд 2: сортировка + поиск */}

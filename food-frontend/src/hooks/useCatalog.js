@@ -27,6 +27,7 @@ export default function useCatalog(search = "", scope = "guest:default") {
   const [allItems, setAllItems] = useState([]);
   const [statusMessage, setStatusMessage] = useState("");
   const [isReloading, setIsReloading] = useState(false);
+  const [reloadProgress, setReloadProgress] = useState(0);
   const [localVersion, setLocalVersionState] = useState(null);
   const [remoteVersion, setRemoteVersion] = useState(null);
   const [hasUpdate, setHasUpdate] = useState(false);
@@ -63,16 +64,21 @@ export default function useCatalog(search = "", scope = "guest:default") {
   // Принудительно загрузить «исходную базу» с сервера и заменить локальную
   async function reloadOriginal() {
     setIsReloading(true);
+    setReloadProgress(5);
     setError("");
     setStatusMessage("");
     try {
       const { version, items: remoteItemsRaw } = await fetchCatalogExport("");
+      setReloadProgress(45);
       const remoteItems = uniqById(remoteItemsRaw.map(normalizeProduct));
       await dbClearScope(scope);
+      setReloadProgress(60);
       await bulkReplace(scope, remoteItems);
+      setReloadProgress(80);
       await setLocalVersion(scope, version);
 
       const refreshedLocal = uniqById(await getAllProducts(scope));
+      setReloadProgress(95);
       setAllItems(refreshedLocal);
       setItems(applyLocalSearch(refreshedLocal, search));
       setLocalVersionState(version);
@@ -80,10 +86,12 @@ export default function useCatalog(search = "", scope = "guest:default") {
       setHasUpdate(false);
       setSyncReady(true);
       setStatusMessage("Исходная база успешно загружена и заменила локальные изменения.");
+      setReloadProgress(100);
     } catch (e) {
       setError(e?.message || "Не удалось загрузить исходную базу.");
     } finally {
       setIsReloading(false);
+      setTimeout(() => setReloadProgress(0), 200);
     }
   }
 
@@ -160,5 +168,6 @@ export default function useCatalog(search = "", scope = "guest:default") {
     syncReady,
     statusMessage,
     isReloading,
+    reloadProgress,
   };
 }
