@@ -93,6 +93,7 @@ export async function fetchFoodProductSubtypes() {
 export async function fetchRecommendations({
   profileId,
   mode = "catalog",
+  comparisonMode = "subgroup",
   cartId = null,
   limit = 50,
   q = "",
@@ -108,6 +109,7 @@ export async function fetchRecommendations({
   const payload = {
     profile: pid,
     mode: String(mode),
+    comparison_mode: String(comparisonMode || "subgroup"),
     limit,
   };
 

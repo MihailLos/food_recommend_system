@@ -128,6 +128,11 @@ function getRecommendationErrorDetail(error) {
   return detail;
 }
 
+const comparisonModeLabels = {
+  subgroup: "Сравнение внутри подгруппы",
+  global: "Сравнение по всему перечню продуктов",
+};
+
 function score100(item) {
   const value = item?.score_components?.score_percent_100 ?? item?.explain?.score_percent_100;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -244,6 +249,8 @@ function DetailsModal({ item, onClose }) {
   const positiveReasons = Array.isArray(explain?.summary?.positive_reasons) ? explain.summary.positive_reasons : [];
   const limitingReasons = Array.isArray(explain?.summary?.limiting_reasons) ? explain.summary.limiting_reasons : [];
   const classText = item.class_label || meta.title;
+  const comparisonMode = explain?.comparison_mode || "subgroup";
+  const categoryRule = explain?.category_rule;
 
   return (
     <div style={modalOverlay} onClick={onClose}>
@@ -252,7 +259,7 @@ function DetailsModal({ item, onClose }) {
           <div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{item.product?.name}</div>
             <div style={{ color: "#666", marginTop: 4 }}>
-              Подгруппа сравнения: {groupLabel(item)}
+              {comparisonMode === "global" ? "Текущая выборка" : `Подгруппа сравнения: ${groupLabel(item)}`}
             </div>
           </div>
           <button type="button" style={btn} onClick={onClose}>Закрыть</button>
@@ -270,9 +277,18 @@ function DetailsModal({ item, onClose }) {
         >
           <div style={{ fontWeight: 700, fontSize: 18 }}>{classText}</div>
           <div style={{ color: "#444", lineHeight: 1.5 }}>
-            Продукт получил класс «{classText}» после сравнения с аналогами своей подгруппы.
+            {comparisonMode === "global"
+              ? `Продукт получил класс «${classText}» после сравнения со всей текущей отфильтрованной выборкой.`
+              : `Продукт получил класс «${classText}» после сравнения с аналогами своей подгруппы.`}{" "}
             Ниже показаны ключевые сильные стороны и ограничивающие факторы в раздельных списках.
           </div>
+          {categoryRule && (
+            <div style={{ color: "#444", lineHeight: 1.5 }}>
+              Дополнительное правило цели: продукт попал в {categoryRule.scope === "subtype" ? "подгруппу" : "группу"}{" "}
+              «{categoryRule.scope_name}», которая для выбранной цели считается{" "}
+              {categoryRule.effect === "preferred" ? "рекомендуемой" : "ограничиваемой"}.
+            </div>
+          )}
         </div>
 
         <div
@@ -288,12 +304,16 @@ function DetailsModal({ item, onClose }) {
               {score.score_percent_100 == null ? "—" : `${score.score_percent_100.toFixed(1)} / 100`}
             </div>
             <div style={{ color: "#666", fontSize: 12, marginTop: 4 }}>
-              Это положение продукта среди аналогов своей подгруппы по итоговой оценке.
+              {comparisonMode === "global"
+                ? "Это положение продукта среди всей текущей отфильтрованной выборки по итоговой оценке."
+                : "Это положение продукта среди аналогов своей подгруппы по итоговой оценке."}
             </div>
           </div>
 
           <div style={{ ...box, padding: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Границы классов в подгруппе</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+              {comparisonMode === "global" ? "Границы классов по текущей выборке" : "Границы классов в подгруппе"}
+            </div>
             <div>Нижняя граница: {fmt(quartiles.qua1, 3)}</div>
             <div>Срединная граница: {fmt(quartiles.qua2, 3)}</div>
             <div>Верхняя граница: {fmt(quartiles.qua3, 3)}</div>
@@ -337,6 +357,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const [searchText, setSearchText] = useState("");
   const [typeId, setTypeId] = useState("");
   const [subtypeId, setSubtypeId] = useState("");
+  const [comparisonMode, setComparisonMode] = useState("subgroup");
   const [types, setTypes] = useState([]);
   const [subtypes, setSubtypes] = useState([]);
   const [payload, setPayload] = useState(null);
@@ -456,6 +477,13 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     setSubtypeId("");
   }, [profileIdNum]);
 
+  useEffect(() => {
+    setHasCalculated(false);
+    setSelectedItem(null);
+  }, [comparisonMode]);
+
+  const isGlobalMode = comparisonMode === "global";
+
   const load = useCallback(async () => {
     if (!profileIdNum) return;
 
@@ -467,6 +495,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       const data = await fetchRecommendations({
         profileId: profileIdNum,
         mode: "catalog",
+        comparisonMode,
         q: searchText,
         typeId: typeId || null,
         subtypeId: subtypeId || null,
@@ -481,7 +510,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     } finally {
       setLoading(false);
     }
-  }, [ensureLocalCatalog, profileIdNum, searchText, subtypeId, typeId]);
+  }, [comparisonMode, ensureLocalCatalog, profileIdNum, searchText, subtypeId, typeId]);
 
   const clearFilters = () => {
     setSearchText("");
@@ -503,6 +532,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       const data = await fetchRecommendations({
         profileId: profileIdNum,
         mode: "catalog",
+        comparisonMode,
         q: "",
         typeId: null,
         subtypeId: null,
@@ -516,7 +546,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     } finally {
       setLoading(false);
     }
-  }, [ensureLocalCatalog, profileIdNum]);
+  }, [comparisonMode, ensureLocalCatalog, profileIdNum]);
 
   useEffect(() => {
     loadOverview();
@@ -527,7 +557,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const showEmptyResult = hasCalculated && !loading && !error && items.length === 0 && payload;
 
   const statsSourceLabel = hasCalculated
-    ? "Статистика по текущей выборке."
+    ? (isGlobalMode
+        ? "Статистика по текущей отфильтрованной выборке в режиме сравнения по всему перечню."
+        : "Статистика по текущей выборке внутри режима сравнения по подгруппам.")
     : "Статистика по всем доступным группам и подгруппам для активного профиля.";
 
   const topPreferredLabel = "Топ-3 подгруппы по наиболее предпочтительным продуктам";
@@ -575,7 +607,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         <div style={{ fontWeight: 700 }}>Рекомендации по продуктам</div>
         <div style={{ color: "#666", fontSize: 13, lineHeight: 1.5 }}>
           В текущей версии алгоритм работает только в режиме просмотра продуктов. Каждый продукт оценивается
-          на 100 г и сравнивается с аналогами своей подгруппы.
+          на 100 г. Режим сравнения определяет, считать ли процентили и квартили внутри подгруппы или по всей текущей выборке.
         </div>
 
         <form
@@ -585,6 +617,23 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
             load();
           }}
         >
+          <div style={{ display: "grid", gap: 6 }}>
+            <label>Режим сравнения</label>
+            <select
+              style={input}
+              value={comparisonMode}
+              onChange={(e) => setComparisonMode(e.target.value || "subgroup")}
+            >
+              <option value="subgroup">{comparisonModeLabels.subgroup}</option>
+              <option value="global">{comparisonModeLabels.global}</option>
+            </select>
+            <div style={{ fontSize: 12, color: "#666", lineHeight: 1.45 }}>
+              {isGlobalMode
+                ? "В этом режиме процентили, медиана и квартили считаются по всей текущей отфильтрованной выборке. Для выбранной цели дополнительно учитываются правила по группам и подгруппам."
+                : "В этом режиме продукт сравнивается только с аналогами своей подгруппы. Цель питания влияет только на набор активных нутриентов."}
+            </div>
+          </div>
+
           <div style={{ display: "grid", gap: 6 }}>
             <label>Поиск по названию</label>
             <input
@@ -769,7 +818,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                               {summarizeReasons(item?.explain?.summary?.limiting_reasons)}
                             </div>
                           </div>
-                          {item.color !== "green" && item.color !== "blocked" && getAlternativeItems(item, enrichedItems).length > 0 && (
+                          {!isGlobalMode && item.color !== "green" && item.color !== "blocked" && getAlternativeItems(item, enrichedItems).length > 0 && (
                             <div
                               style={{
                                 marginTop: 8,
@@ -786,6 +835,13 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                               {getAlternativeItems(item, enrichedItems)
                                 .map((alternative) => `${alternative.product.name} (${score100(alternative)?.toFixed(1)} / 100)`)
                                 .join("; ")}
+                            </div>
+                          )}
+                          {item?.explain?.category_rule && (
+                            <div style={{ marginTop: 8, fontSize: 12, color: "#555", lineHeight: 1.45 }}>
+                              <strong>Поправка цели:</strong>{" "}
+                              {item.explain.category_rule.effect === "preferred" ? "рекомендуемая" : "ограничиваемая"}{" "}
+                              {item.explain.category_rule.scope === "subtype" ? "подгруппа" : "группа"} «{item.explain.category_rule.scope_name}».
                             </div>
                           )}
                         </div>

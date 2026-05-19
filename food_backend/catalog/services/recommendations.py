@@ -47,6 +47,149 @@ BASE_RESTRICTED_CODES = {
     "cholesterol_g",
 }
 
+COMPARISON_MODE_SUBGROUP = "subgroup"
+COMPARISON_MODE_GLOBAL = "global"
+COMPARISON_MODE_CHOICES = {COMPARISON_MODE_SUBGROUP, COMPARISON_MODE_GLOBAL}
+
+GOAL_RULE_SIGNAL_WEIGHT = 2
+
+GOAL_NUTRIENT_PROFILES = {
+    ConsumerGoal.GOAL_LOSE_WEIGHT: {
+        "preferred": {
+            "protein_g",
+            "dietary_fiber_g",
+            "pufa_g",
+            "a_mg",
+            "beta_carotene_mg",
+            "b1_mg",
+            "b2_mg",
+            "c_mg",
+            "niacin_index",
+            "ca_mg",
+            "fe_mg",
+            "k_mg",
+            "mg_mg",
+            "p_mg",
+        },
+        "restricted": {
+            "energy_kcal",
+            "nlc_g",
+            "cholesterol_g",
+            "na_mg",
+            "alcohol_pct",
+        },
+    },
+    ConsumerGoal.GOAL_MAINTAIN: {
+        "preferred": {
+            "protein_g",
+            "fats_g",
+            "carbs_g",
+            "dietary_fiber_g",
+            "a_mg",
+            "beta_carotene_mg",
+            "b1_mg",
+            "b2_mg",
+            "c_mg",
+            "niacin_index",
+            "ca_mg",
+            "fe_mg",
+            "k_mg",
+            "mg_mg",
+            "p_mg",
+        },
+        "restricted": {
+            "nlc_g",
+            "mds_g",
+            "na_mg",
+            "alcohol_pct",
+        },
+    },
+    ConsumerGoal.GOAL_GAIN_MUSCLE: {
+        "preferred": {
+            "energy_kcal",
+            "protein_g",
+            "fats_g",
+            "carbs_g",
+            "mg_mg",
+            "fe_mg",
+            "ca_mg",
+            "water_g",
+        },
+        "restricted": {
+            "nlc_g",
+            "mds_g",
+            "alcohol_pct",
+        },
+    },
+}
+
+GOAL_CATEGORY_RULES = {
+    ConsumerGoal.GOAL_LOSE_WEIGHT: {
+        "preferred_subtypes": (
+            "овощ",
+            "фрукт",
+            "говядина 1",
+            "свинина бекон",
+            "свинина мясн",
+            "баранина 1",
+            "птиц",
+            "рыб",
+        ),
+        "preferred_types": (
+            "овощ",
+            "фрукт",
+            "рыб",
+            "птиц",
+        ),
+        "restricted_subtypes": (
+            "конфет",
+            "шоколад",
+            "кондитер",
+            "морожен",
+            "сладк",
+            "лимонад",
+            "газирован",
+            "выпечк",
+        ),
+        "restricted_types": (
+            "кондитер",
+            "морожен",
+            "выпечк",
+        ),
+    },
+    ConsumerGoal.GOAL_MAINTAIN: {
+        "preferred_subtypes": (
+            "овощ",
+            "фрукт",
+        ),
+        "preferred_types": (
+            "овощ",
+            "фрукт",
+        ),
+        "restricted_subtypes": (
+            "конфет",
+            "шоколад",
+            "кондитер",
+            "морожен",
+            "сладк",
+            "лимонад",
+            "газирован",
+            "выпечк",
+        ),
+        "restricted_types": (
+            "кондитер",
+            "морожен",
+            "выпечк",
+        ),
+    },
+    ConsumerGoal.GOAL_GAIN_MUSCLE: {
+        "preferred_subtypes": (),
+        "preferred_types": (),
+        "restricted_subtypes": (),
+        "restricted_types": (),
+    },
+}
+
 CLASS_META = {
     "best_fit": {"label": "Наиболее подходит", "color": "green", "rank": 3},
     "limited_fit": {"label": "Подходит с ограничениями", "color": "yellow", "rank": 2},
@@ -240,12 +383,8 @@ def is_blocked(
     return False, []
 
 
-def _goal_energy_role(goal_type: Optional[str]) -> Optional[str]:
-    if goal_type == ConsumerGoal.GOAL_LOSE_WEIGHT:
-        return "restricted"
-    if goal_type == ConsumerGoal.GOAL_GAIN_MUSCLE:
-        return "preferred"
-    return None
+def _normalize_text(value: Any) -> str:
+    return str(value or "").strip().lower()
 
 
 def _build_default_roles(
@@ -254,18 +393,20 @@ def _build_default_roles(
     targets_day: Dict[str, float],
 ) -> Dict[str, str]:
     roles: Dict[str, str] = {}
+    profile = GOAL_NUTRIENT_PROFILES.get(goal_type) or {
+        "preferred": BASE_PREFERRED_CODES,
+        "restricted": BASE_RESTRICTED_CODES,
+    }
 
-    for code in BASE_PREFERRED_CODES:
-        if code in nutrient_map and code in targets_day:
+    del targets_day
+
+    for code in profile["preferred"]:
+        if code in nutrient_map:
             roles[code] = "preferred"
 
-    for code in BASE_RESTRICTED_CODES:
+    for code in profile["restricted"]:
         if code in nutrient_map:
             roles[code] = "restricted"
-
-    energy_role = _goal_energy_role(goal_type)
-    if energy_role and "energy_kcal" in nutrient_map:
-        roles["energy_kcal"] = energy_role
 
     return roles
 
@@ -296,7 +437,13 @@ def _comparison_group_key(product: Any) -> Tuple[str, Optional[int]]:
     return ("type", int(type_id) if type_id else None)
 
 
-def _fetch_comparison_pools(products: List[Any]) -> Dict[Tuple[str, Optional[int]], List[Any]]:
+def _fetch_comparison_pools(
+    products: List[Any],
+    comparison_mode: str = COMPARISON_MODE_SUBGROUP,
+) -> Dict[Tuple[str, Optional[int]], List[Any]]:
+    if comparison_mode == COMPARISON_MODE_GLOBAL:
+        return {("global", None): list(products)}
+
     if products and _is_mapping(products[0]):
         pools: Dict[Tuple[str, Optional[int]], List[Any]] = {}
         for product in products:
@@ -333,6 +480,54 @@ def _fetch_comparison_pools(products: List[Any]) -> Dict[Tuple[str, Optional[int
                 pools.setdefault(("type", int(product_type_id)), []).append(product)
 
     return pools
+
+
+def _match_goal_category_rule(goal_type: Optional[str], product: Any) -> Optional[dict]:
+    rules = GOAL_CATEGORY_RULES.get(goal_type)
+    if not rules:
+        return None
+
+    subtype_name = _normalize_text(_product_get(product, "subtype_name", "subtypeName"))
+    type_name = _normalize_text(_product_get(product, "type_name", "typeName"))
+    if not type_name and not _is_mapping(product):
+        type_name = _normalize_text(getattr(getattr(product, "type", None), "name", None))
+    if not subtype_name and not _is_mapping(product):
+        subtype_name = _normalize_text(getattr(getattr(product, "subtype", None), "name", None))
+
+    for token in rules["preferred_subtypes"]:
+        if token in subtype_name:
+            return {
+                "scope": "subtype",
+                "scope_name": _product_get(product, "subtype_name", "subtypeName") or getattr(getattr(product, "subtype", None), "name", None),
+                "effect": "preferred",
+                "token": token,
+            }
+    for token in rules["restricted_subtypes"]:
+        if token in subtype_name:
+            return {
+                "scope": "subtype",
+                "scope_name": _product_get(product, "subtype_name", "subtypeName") or getattr(getattr(product, "subtype", None), "name", None),
+                "effect": "restricted",
+                "token": token,
+            }
+
+    for token in rules["preferred_types"]:
+        if token in type_name:
+            return {
+                "scope": "type",
+                "scope_name": _product_get(product, "type_name", "typeName") or getattr(getattr(product, "type", None), "name", None),
+                "effect": "preferred",
+                "token": token,
+            }
+    for token in rules["restricted_types"]:
+        if token in type_name:
+            return {
+                "scope": "type",
+                "scope_name": _product_get(product, "type_name", "typeName") or getattr(getattr(product, "type", None), "name", None),
+                "effect": "restricted",
+                "token": token,
+            }
+    return None
 
 
 def _median(values: List[float]) -> Optional[float]:
@@ -537,6 +732,8 @@ def _build_group_metrics(
     nutrient_map: Dict[str, NutrientDictionary],
     targets_day: Dict[str, float],
     prefs_by_code: Dict[str, GoalNutrientPreference],
+    goal_type: Optional[str] = None,
+    comparison_mode: str = COMPARISON_MODE_SUBGROUP,
     server_product_map: Optional[Dict[int, FoodProducts]] = None,
 ) -> Dict[int, dict]:
     blocked_cache = {
@@ -551,12 +748,14 @@ def _build_group_metrics(
 
     percentile_maps: Dict[str, Dict[int, float]] = {}
     signal_map: Dict[int, List[dict]] = {}
+    category_rule_map: Dict[int, Optional[dict]] = {}
     score_map: Dict[int, float] = {}
 
     if not active_roles:
         return {
-            product.id: {
+            _product_id(product): {
                 "signals": [],
+                "category_rule": None,
                 "score_index_s": None,
                 "score_percent_100": None,
                 "qua1": None,
@@ -564,6 +763,7 @@ def _build_group_metrics(
                 "qua3": None,
             }
             for product in allowed_products
+            if _product_id(product) is not None
         }
 
     for code in active_roles:
@@ -594,6 +794,13 @@ def _build_group_metrics(
             a_values.append(signal["correspondence_a"])
 
         product_id = _product_id(product)
+        category_rule = None
+        if comparison_mode == COMPARISON_MODE_GLOBAL:
+            category_rule = _match_goal_category_rule(goal_type, product)
+            if category_rule:
+                synthetic_value = 1.0 if category_rule["effect"] == "preferred" else 0.0
+                a_values.extend([synthetic_value] * GOAL_RULE_SIGNAL_WEIGHT)
+        category_rule_map[product_id] = category_rule
         signal_map[product_id] = signals
         if a_values:
             score_map[product_id] = float(median(a_values))
@@ -604,6 +811,7 @@ def _build_group_metrics(
     return {
         _product_id(product): {
             "signals": signal_map.get(_product_id(product), []),
+            "category_rule": category_rule_map.get(_product_id(product)),
             "score_index_s": score_map.get(_product_id(product)),
             "score_percent_100": None
             if _product_id(product) not in score_percentile
@@ -616,7 +824,7 @@ def _build_group_metrics(
     }
 
 
-def _summary_from_signals(product: Any, signals: List[dict], class_label: str) -> dict:
+def _summary_from_signals(product: Any, signals: List[dict], class_label: str, category_rule: Optional[dict] = None) -> dict:
     preferred = sorted(
         [s for s in signals if s["direction"] == "preferred"],
         key=lambda s: (s["correspondence_a"], s["percentile_q"]),
@@ -641,6 +849,15 @@ def _summary_from_signals(product: Any, signals: List[dict], class_label: str) -
         parts.append("Сильные стороны продукта относительно аналогов: " + "; ".join(positive_reasons) + ".")
     if limiting_reasons:
         parts.append("Ограничивающие факторы: " + "; ".join(limiting_reasons) + ".")
+    if category_rule:
+        if category_rule["effect"] == "preferred":
+            parts.append(
+                f"Дополнительно продукт поддержан правилом цели питания, так как относится к рекомендуемой {('подгруппе' if category_rule['scope'] == 'subtype' else 'группе')} «{category_rule['scope_name']}»."
+            )
+        else:
+            parts.append(
+                f"Дополнительно продукт ограничен правилом цели питания, так как относится к ограничиваемой {('подгруппе' if category_rule['scope'] == 'subtype' else 'группе')} «{category_rule['scope_name']}»."
+            )
 
     return {
         "positive_reasons": positive_reasons,
@@ -657,12 +874,15 @@ def recommend(
     q: Optional[str] = None,
     type_id: Optional[int] = None,
     subtype_id: Optional[int] = None,
+    comparison_mode: str = COMPARISON_MODE_SUBGROUP,
     local_products: Optional[List[dict]] = None,
 ) -> dict:
     if mode != "catalog":
         raise ValueError("Новый алгоритм рекомендаций сейчас поддерживает только режим просмотра продуктов.")
 
     del cart_id  # explicit: unsupported in the current algorithm version
+    if comparison_mode not in COMPARISON_MODE_CHOICES:
+        comparison_mode = COMPARISON_MODE_SUBGROUP
 
     profile = get_object_or_404(ConsumerProfile, pk=profile_id)
     goal = ConsumerGoal.objects.filter(profile=profile, is_active=True).order_by("-id").first()
@@ -698,7 +918,7 @@ def recommend(
                 .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")
             )
             server_product_map = {product.id: product for product in server_products}
-        pools = _fetch_comparison_pools(local_products)
+        pools = _fetch_comparison_pools(products, comparison_mode=comparison_mode)
     else:
         qs = FoodProducts.objects.all()
         if q:
@@ -712,7 +932,7 @@ def recommend(
             qs.select_related("subtype", "subtype__product_type")
             .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")[:2000]
         )
-        pools = _fetch_comparison_pools(products)
+        pools = _fetch_comparison_pools(products, comparison_mode=comparison_mode)
 
     group_metrics: Dict[Tuple[str, Optional[int]], Dict[int, dict]] = {}
     for key, group_products in pools.items():
@@ -723,6 +943,8 @@ def recommend(
             nutrient_map=nutrient_map,
             targets_day=targets_day,
             prefs_by_code=prefs_by_code,
+            goal_type=getattr(goal, "goal_type", None),
+            comparison_mode=comparison_mode,
             server_product_map=server_product_map,
         )
 
@@ -737,13 +959,14 @@ def recommend(
         product_id = _product_id(product)
         metrics = group_metrics.get(group_key, {}).get(product_id, {})
         signals = metrics.get("signals", [])
+        category_rule = metrics.get("category_rule")
         score_index_s = metrics.get("score_index_s")
         score_percent_100 = metrics.get("score_percent_100")
         qua1 = metrics.get("qua1")
         qua2 = metrics.get("qua2")
         qua3 = metrics.get("qua3")
         class_code, class_label, color = _classify(score_index_s, qua1, qua3)
-        summary = _summary_from_signals(product, signals, class_label)
+        summary = _summary_from_signals(product, signals, class_label, category_rule)
 
         reasons = []
         if summary["positive_reasons"]:
@@ -753,14 +976,17 @@ def recommend(
         if not reasons:
             reasons.append("По выбранному профилю активные нутриенты для расчёта не определены.")
 
-        comparison_scope, comparison_id = group_key
-        comparison_name = (
-            _product_get(product, "subtype_name", "subtypeName")
-            if comparison_scope == "subtype"
-            else _product_get(product, "type_name", "typeName")
-        )
-        if comparison_scope == "type" and not _is_mapping(product):
-            comparison_name = getattr(getattr(product, "type", None), "name", None)
+        if comparison_mode == COMPARISON_MODE_GLOBAL:
+            comparison_scope, comparison_id, comparison_name = "global", None, "Текущая выборка"
+        else:
+            comparison_scope, comparison_id = group_key
+            comparison_name = (
+                _product_get(product, "subtype_name", "subtypeName")
+                if comparison_scope == "subtype"
+                else _product_get(product, "type_name", "typeName")
+            )
+            if comparison_scope == "type" and not _is_mapping(product):
+                comparison_name = getattr(getattr(product, "type", None), "name", None)
 
         score_components = {
             "index_s": score_index_s,
@@ -821,6 +1047,7 @@ def recommend(
                     ),
                 },
                 "summary": summary,
+                "category_rule": category_rule,
                 "method": {
                     "basis": "rank_percentile_median_quartile_model",
                     "percentile_formula": "Q = (count_less + 0.5 * count_equal) / count_known",
@@ -829,6 +1056,7 @@ def recommend(
                     "score_formula": "S = median(A_n)",
                     "class_formula": "best_fit if S >= Qua3; limited_fit if Qua1 < S < Qua3; not_recommended if S <= Qua1",
                 },
+                "comparison_mode": comparison_mode,
                 "filters": {
                     "q": q or "",
                     "type_id": type_id,
@@ -854,6 +1082,7 @@ def recommend(
         "profile_id": profile.id,
         "goal_id": goal.id if goal else None,
         "mode": mode,
+        "comparison_mode": comparison_mode,
         "count": min(len(items), limit),
         "items": items[:limit],
     }
