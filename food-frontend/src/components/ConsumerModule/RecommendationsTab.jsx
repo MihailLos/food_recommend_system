@@ -133,6 +133,60 @@ const comparisonModeLabels = {
   global: "Сравнение по всему перечню продуктов",
 };
 
+const recommendationPayloadFields = [
+  "id",
+  "name",
+  "typeId",
+  "typeName",
+  "subtypeId",
+  "subtypeName",
+  "isChildAllowed",
+  "allergens",
+  "protein_g",
+  "fats_g",
+  "carbs_g",
+  "energy_kcal",
+  "fiber_g",
+  "dietary_fiber_g",
+  "mds_g",
+  "starch_g",
+  "water_g",
+  "na_mg",
+  "k_mg",
+  "ca_mg",
+  "mg_mg",
+  "p_mg",
+  "fe_mg",
+  "ash_g",
+  "a_mg",
+  "beta_carotene_mg",
+  "b1_mg",
+  "b2_mg",
+  "pp_mg",
+  "c_mg",
+  "retinol_index",
+  "tocopherol_index",
+  "niacin_index",
+  "nlc_g",
+  "pufa_g",
+  "cholesterol_g",
+  "organic_acids_g",
+  "alcohol_pct",
+];
+
+function toRecommendationPayload(products) {
+  if (!Array.isArray(products)) return [];
+  return products.map((item) => {
+    const projected = {};
+    for (const field of recommendationPayloadFields) {
+      if (item?.[field] !== undefined) {
+        projected[field] = item[field];
+      }
+    }
+    return projected;
+  });
+}
+
 function score100(item) {
   const value = item?.score_components?.score_percent_100 ?? item?.explain?.score_percent_100;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -500,7 +554,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         typeId: typeId || null,
         subtypeId: subtypeId || null,
         limit: 300,
-        localProducts: localCatalog,
+        localProducts: toRecommendationPayload(localCatalog),
       });
       setPayload(data);
       setHasCalculated(true);
@@ -518,7 +572,11 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     setSubtypeId("");
     setSelectedItem(null);
     setHasCalculated(false);
-    loadOverview();
+    if (comparisonMode === "global") {
+      loadOverview();
+    } else {
+      setPayload(null);
+    }
   };
 
   const loadOverview = useCallback(async () => {
@@ -537,7 +595,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         typeId: null,
         subtypeId: null,
         limit: 5000,
-        localProducts: localCatalog,
+        localProducts: toRecommendationPayload(localCatalog),
       });
       setPayload(data);
     } catch (e) {
@@ -549,8 +607,12 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   }, [comparisonMode, ensureLocalCatalog, profileIdNum]);
 
   useEffect(() => {
-    loadOverview();
-  }, [loadOverview]);
+    if (comparisonMode === "global") {
+      loadOverview();
+      return;
+    }
+    setPayload(null);
+  }, [comparisonMode, loadOverview]);
 
   const statsTitle = hasCalculated ? "Распределение по классам" : "Обзор по всем группам и подгруппам";
   const showItems = hasCalculated && items.length > 0;
@@ -568,7 +630,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
 
   const resultCountLabel = hasCalculated
     ? `Найдено продуктов: ${items.length}`
-    : `Для обзора учтены все ${items.length} продуктов текущего профиля`;
+    : comparisonMode === "global"
+      ? `Для обзора учтены все ${items.length} продуктов текущего профиля`
+      : "Выберите фильтры и нажмите «Рассчитать», чтобы сравнить продукты внутри подгрупп.";
 
   const showSubtypeStats = !subtypeId;
   const showGroupStats = !typeId;
@@ -870,6 +934,13 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       {showEmptyResult && (
         <div style={{ ...box, padding: 16, color: "#666" }}>
           По выбранным фильтрам рекомендации не найдены.
+        </div>
+      )}
+
+      {!hasCalculated && comparisonMode === "subgroup" && !loading && !error && (
+        <div style={{ ...box, padding: 16, color: "#666", lineHeight: 1.55 }}>
+          В режиме сравнения внутри подгруппы обзор по всей базе не строится автоматически, потому что это самый тяжёлый режим расчёта.
+          Выберите фильтры при необходимости и нажмите `Рассчитать`.
         </div>
       )}
 

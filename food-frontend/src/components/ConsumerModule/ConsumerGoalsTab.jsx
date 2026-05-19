@@ -51,6 +51,76 @@ const goalTypeLabels = {
   maintain: "Поддержание массы",
 };
 
+const goalBaseProfiles = {
+  lose_weight: {
+    preferred: [
+      "protein_g",
+      "dietary_fiber_g",
+      "pufa_g",
+      "a_mg",
+      "beta_carotene_mg",
+      "b1_mg",
+      "b2_mg",
+      "c_mg",
+      "niacin_index",
+      "ca_mg",
+      "fe_mg",
+      "k_mg",
+      "mg_mg",
+      "p_mg",
+    ],
+    restricted: [
+      "energy_kcal",
+      "nlc_g",
+      "cholesterol_g",
+      "na_mg",
+      "alcohol_pct",
+    ],
+  },
+  maintain: {
+    preferred: [
+      "protein_g",
+      "fats_g",
+      "carbs_g",
+      "dietary_fiber_g",
+      "a_mg",
+      "beta_carotene_mg",
+      "b1_mg",
+      "b2_mg",
+      "c_mg",
+      "niacin_index",
+      "ca_mg",
+      "fe_mg",
+      "k_mg",
+      "mg_mg",
+      "p_mg",
+    ],
+    restricted: [
+      "nlc_g",
+      "mds_g",
+      "na_mg",
+      "alcohol_pct",
+    ],
+  },
+  gain_muscle: {
+    preferred: [
+      "energy_kcal",
+      "protein_g",
+      "fats_g",
+      "carbs_g",
+      "mg_mg",
+      "fe_mg",
+      "ca_mg",
+      "water_g",
+    ],
+    restricted: [
+      "nlc_g",
+      "mds_g",
+      "alcohol_pct",
+    ],
+  },
+};
+
 const dragItemStyles = {
   padding: "8px 10px",
   border: "1px solid #ddd",
@@ -796,33 +866,24 @@ export default function ConsumerGoalsTab({ profileId }) {
     ? `${selectedGoal.title || goalTypeLabels[selectedGoal.goal_type] || selectedGoal.goal_type}${selectedGoal.energy_delta_kcal ? `, ${selectedGoal.energy_delta_kcal > 0 ? "+" : ""}${selectedGoal.energy_delta_kcal} ккал/сут` : ""}`
     : "Новая цель";
 
-  const basePreferredCodes = [
-    "protein_g",
-    "dietary_fiber_g",
-    "pufa_g",
-    "a_mg",
-    "beta_carotene_mg",
-    "b1_mg",
-    "b2_mg",
-    "c_mg",
-    "niacin_index",
-    "ca_mg",
-    "fe_mg",
-    "k_mg",
-    "mg_mg",
-    "p_mg",
-  ];
-  const baseRestrictedCodes = [
-    "nlc_g",
-    "mds_g",
-    "na_mg",
-    "cholesterol_g",
-  ];
+  const currentBaseProfile = goalBaseProfiles[form.goal_type] || goalBaseProfiles.maintain;
+  const nutrientCodeSet = useMemo(
+    () => new Set((nutrients || []).map((item) => item.code)),
+    [nutrients]
+  );
+  const basePreferredCodes = useMemo(
+    () => currentBaseProfile.preferred.filter((code) => nutrientCodeSet.has(code)),
+    [currentBaseProfile.preferred, nutrientCodeSet]
+  );
+  const baseRestrictedCodes = useMemo(
+    () => currentBaseProfile.restricted.filter((code) => nutrientCodeSet.has(code)),
+    [currentBaseProfile.restricted, nutrientCodeSet]
+  );
   const energyModeText =
-    form.goal_type === "lose_weight"
-      ? "Энергетическая ценность дополнительно относится к ограничиваемым."
-      : form.goal_type === "gain_muscle"
-        ? "Энергетическая ценность дополнительно относится к предпочтительным."
+    basePreferredCodes.includes("energy_kcal")
+      ? "Энергетическая ценность входит в базовые предпочтительные нутриенты для этой цели."
+      : baseRestrictedCodes.includes("energy_kcal")
+        ? "Энергетическая ценность входит в базовые ограничиваемые нутриенты для этой цели."
         : "Энергетическая ценность остаётся контрольным показателем и в базовые списки не включается.";
 
   const availableNutrients = useMemo(

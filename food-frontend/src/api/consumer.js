@@ -134,5 +134,5 @@ export async function fetchRecommendations({
     payload.local_products = localProducts;
   }
 
-  return client.post(`/api/consumer/recommendations/`, payload).then((r) => r.data);
+  return client.post(`/api/consumer/recommendations/`, payload, { timeout: 90000 }).then((r) => r.data);
 }
