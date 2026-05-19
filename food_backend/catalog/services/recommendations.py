@@ -1,5 +1,5 @@
 from statistics import median
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from django.shortcuts import get_object_or_404
 
@@ -82,7 +82,42 @@ def _safe_float(value) -> Optional[float]:
         return None
 
 
-def _product_payload(product: FoodProducts) -> dict:
+def _is_mapping(product: Any) -> bool:
+    return isinstance(product, dict)
+
+
+def _product_get(product: Any, *keys: str):
+    if _is_mapping(product):
+        for key in keys:
+            if key in product and product[key] is not None:
+                return product[key]
+        return None
+    for key in keys:
+        value = getattr(product, key, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _product_id(product: Any) -> Optional[int]:
+    raw = _product_get(product, "id")
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _product_payload(product: Any) -> dict:
+    if _is_mapping(product):
+        return {
+            "id": _product_get(product, "id"),
+            "name": _product_get(product, "name"),
+            "subtype_id": _product_get(product, "subtype_id", "subtypeId"),
+            "subtype_name": _product_get(product, "subtype_name", "subtypeName"),
+            "type_id": _product_get(product, "type_id", "typeId"),
+            "type_name": _product_get(product, "type_name", "typeName"),
+        }
+
     subtype = getattr(product, "subtype", None)
     product_type = getattr(product, "type", None)
     return {
@@ -100,7 +135,14 @@ def _resolve_related(product: FoodProducts, source_group: str):
     return getattr(product, rel_name, None)
 
 
-def get_nutrient_value(product: FoodProducts, nd: NutrientDictionary) -> Optional[float]:
+def get_nutrient_value(product: Any, nd: NutrientDictionary) -> Optional[float]:
+    if _is_mapping(product):
+        code = nd.code
+        aliases = {
+            "dietary_fiber_g": "fiber_g",
+        }
+        value = _product_get(product, code, aliases.get(code, ""))
+        return _safe_float(value)
     related = _resolve_related(product, nd.source_group)
     if related is None:
         return None
@@ -138,7 +180,7 @@ def build_targets_day_from_profile_targets(targets: Dict) -> Dict[str, float]:
     return out
 
 
-def is_blocked(profile: ConsumerProfile, product: FoodProducts) -> Tuple[bool, List[str]]:
+def _is_blocked_orm(profile: ConsumerProfile, product: FoodProducts) -> Tuple[bool, List[str]]:
     prod_allergens = get_allergens_for_product(product)
     if not hasattr(profile, "_recommendation_allergen_ids_cache"):
         profile._recommendation_allergen_ids_cache = set(
@@ -158,6 +200,41 @@ def is_blocked(profile: ConsumerProfile, product: FoodProducts) -> Tuple[bool, L
     if profile.has_minor_children:
         rule, _level = pick_not_child_rule(product)
         if rule is not None:
+            return True, ["Продукт исключён: не подходит для выбранного критерия организации питания детей."]
+
+    return False, []
+
+
+def is_blocked(
+    profile: ConsumerProfile,
+    product: Any,
+    server_product_map: Optional[Dict[int, FoodProducts]] = None,
+) -> Tuple[bool, List[str]]:
+    if not _is_mapping(product):
+        return _is_blocked_orm(profile, product)
+
+    product_id = _product_id(product)
+    if server_product_map and product_id in server_product_map:
+        return _is_blocked_orm(profile, server_product_map[product_id])
+
+    if not hasattr(profile, "_recommendation_allergen_ids_cache"):
+        profile._recommendation_allergen_ids_cache = set(
+            profile.profile_allergens.values_list("allergen_id", flat=True)
+        )
+    profile_allergen_ids = profile._recommendation_allergen_ids_cache
+
+    raw_allergens = _product_get(product, "allergens") or []
+    product_allergen_ids = set()
+    for allergen in raw_allergens:
+        if isinstance(allergen, dict) and allergen.get("id") is not None:
+            product_allergen_ids.add(int(allergen["id"]))
+
+    if profile_allergen_ids and product_allergen_ids and (profile_allergen_ids & product_allergen_ids):
+        return True, ["Продукт исключён: содержит аллерген, отмеченный в профиле пользователя."]
+
+    if profile.has_minor_children:
+        child_allowed = _product_get(product, "is_child_allowed", "isChildAllowed")
+        if child_allowed is False:
             return True, ["Продукт исключён: не подходит для выбранного критерия организации питания детей."]
 
     return False, []
@@ -211,14 +288,21 @@ def _build_active_roles(
     return roles
 
 
-def _comparison_group_key(product: FoodProducts) -> Tuple[str, Optional[int]]:
-    if getattr(product, "subtype_id", None):
-        return ("subtype", int(product.subtype_id))
-    type_id = getattr(product, "type_id", None) or getattr(getattr(product, "type", None), "id", None)
+def _comparison_group_key(product: Any) -> Tuple[str, Optional[int]]:
+    subtype_id = _product_get(product, "subtype_id", "subtypeId")
+    if subtype_id:
+        return ("subtype", int(subtype_id))
+    type_id = _product_get(product, "type_id", "typeId") or getattr(getattr(product, "type", None), "id", None)
     return ("type", int(type_id) if type_id else None)
 
 
-def _fetch_comparison_pools(products: List[FoodProducts]) -> Dict[Tuple[str, Optional[int]], List[FoodProducts]]:
+def _fetch_comparison_pools(products: List[Any]) -> Dict[Tuple[str, Optional[int]], List[Any]]:
+    if products and _is_mapping(products[0]):
+        pools: Dict[Tuple[str, Optional[int]], List[Any]] = {}
+        for product in products:
+            pools.setdefault(_comparison_group_key(product), []).append(product)
+        return pools
+
     subtype_ids = {int(p.subtype_id) for p in products if getattr(p, "subtype_id", None)}
     type_ids = {
         int(getattr(p, "type_id", None) or getattr(getattr(p, "type", None), "id", None))
@@ -280,12 +364,14 @@ def _compute_quartiles(values: List[float]) -> Tuple[Optional[float], Optional[f
     return q1, q2, q3
 
 
-def _build_percentile_map(products: List[FoodProducts], nd: NutrientDictionary) -> Dict[int, float]:
+def _build_percentile_map(products: List[Any], nd: NutrientDictionary) -> Dict[int, float]:
     values = []
     for product in products:
         value = get_nutrient_value(product, nd)
         if value is not None:
-            values.append((product.id, float(value)))
+            product_id = _product_id(product)
+            if product_id is not None:
+                values.append((product_id, float(value)))
 
     if not values:
         return {}
@@ -357,7 +443,7 @@ def _format_correspondence_text(direction: str, correspondence_a: float) -> str:
 
 
 def _build_signal(
-    product: FoodProducts,
+    product: Any,
     code: str,
     role: str,
     nd: NutrientDictionary,
@@ -404,7 +490,7 @@ def _classify(score_s: Optional[float], qua1: Optional[float], qua3: Optional[fl
     return "limited_fit", meta["label"], meta["color"]
 
 
-def _make_blocked_item(product: FoodProducts, reasons: List[str]) -> dict:
+def _make_blocked_item(product: Any, reasons: List[str]) -> dict:
     meta = CLASS_META["excluded"]
     return {
         "product": _product_payload(product),
@@ -446,14 +532,22 @@ def _make_blocked_item(product: FoodProducts, reasons: List[str]) -> dict:
 
 def _build_group_metrics(
     profile: ConsumerProfile,
-    group_products: List[FoodProducts],
+    group_products: List[Any],
     active_roles: Dict[str, str],
     nutrient_map: Dict[str, NutrientDictionary],
     targets_day: Dict[str, float],
     prefs_by_code: Dict[str, GoalNutrientPreference],
+    server_product_map: Optional[Dict[int, FoodProducts]] = None,
 ) -> Dict[int, dict]:
-    blocked_cache = {product.id: is_blocked(profile, product) for product in group_products}
-    allowed_products = [product for product in group_products if not blocked_cache[product.id][0]]
+    blocked_cache = {
+        _product_id(product): is_blocked(profile, product, server_product_map=server_product_map)
+        for product in group_products
+        if _product_id(product) is not None
+    }
+    allowed_products = [
+        product for product in group_products
+        if _product_id(product) is not None and not blocked_cache[_product_id(product)][0]
+    ]
 
     percentile_maps: Dict[str, Dict[int, float]] = {}
     signal_map: Dict[int, List[dict]] = {}
@@ -483,7 +577,8 @@ def _build_group_metrics(
         a_values: List[float] = []
         for code, role in active_roles.items():
             nd = nutrient_map.get(code)
-            percentile_q = percentile_maps.get(code, {}).get(product.id)
+            product_id = _product_id(product)
+            percentile_q = percentile_maps.get(code, {}).get(product_id)
             if nd is None or percentile_q is None:
                 continue
             signal = _build_signal(
@@ -498,20 +593,21 @@ def _build_group_metrics(
             signals.append(signal)
             a_values.append(signal["correspondence_a"])
 
-        signal_map[product.id] = signals
+        product_id = _product_id(product)
+        signal_map[product_id] = signals
         if a_values:
-            score_map[product.id] = float(median(a_values))
+            score_map[product_id] = float(median(a_values))
 
     qua1, qua2, qua3 = _compute_quartiles(list(score_map.values()))
     score_percentile = _build_score_percentile_map(score_map)
 
     return {
-        product.id: {
-            "signals": signal_map.get(product.id, []),
-            "score_index_s": score_map.get(product.id),
+        _product_id(product): {
+            "signals": signal_map.get(_product_id(product), []),
+            "score_index_s": score_map.get(_product_id(product)),
             "score_percent_100": None
-            if product.id not in score_percentile
-            else round(score_percentile[product.id] * 100.0, 1),
+            if _product_id(product) not in score_percentile
+            else round(score_percentile[_product_id(product)] * 100.0, 1),
             "qua1": qua1,
             "qua2": qua2,
             "qua3": qua3,
@@ -520,7 +616,7 @@ def _build_group_metrics(
     }
 
 
-def _summary_from_signals(product: FoodProducts, signals: List[dict], class_label: str) -> dict:
+def _summary_from_signals(product: Any, signals: List[dict], class_label: str) -> dict:
     preferred = sorted(
         [s for s in signals if s["direction"] == "preferred"],
         key=lambda s: (s["correspondence_a"], s["percentile_q"]),
@@ -561,6 +657,7 @@ def recommend(
     q: Optional[str] = None,
     type_id: Optional[int] = None,
     subtype_id: Optional[int] = None,
+    local_products: Optional[List[dict]] = None,
 ) -> dict:
     if mode != "catalog":
         raise ValueError("Новый алгоритм рекомендаций сейчас поддерживает только режим просмотра продуктов.")
@@ -578,20 +675,45 @@ def recommend(
     nutrient_map = {n.code: n for n in nutrient_rows}
     active_roles = _build_active_roles(goal, prefs, nutrient_map, targets_day)
 
-    qs = FoodProducts.objects.all()
-    if q:
-        qs = qs.filter(name__icontains=q.strip())
-    if subtype_id:
-        qs = qs.filter(subtype_id=subtype_id)
-    elif type_id:
-        qs = qs.filter(subtype__product_type_id=type_id)
+    server_product_map: Dict[int, FoodProducts] = {}
+    if local_products:
+        source_products = [item for item in local_products if isinstance(item, dict)]
+        if q:
+            search = q.strip().lower()
+            source_products = [item for item in source_products if search in str(_product_get(item, "name") or "").lower()]
+        if subtype_id:
+            source_products = [item for item in source_products if str(_product_get(item, "subtype_id", "subtypeId") or "") == str(subtype_id)]
+        elif type_id:
+            source_products = [item for item in source_products if str(_product_get(item, "type_id", "typeId") or "") == str(type_id)]
+        products = source_products[:2000]
 
-    products = list(
-        qs.select_related("subtype", "subtype__product_type")
-        .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")[:2000]
-    )
+        server_ids = [
+            pid for pid in {_product_id(item) for item in local_products}
+            if pid is not None and pid > 0
+        ]
+        if server_ids:
+            server_products = (
+                FoodProducts.objects.filter(id__in=server_ids)
+                .select_related("subtype", "subtype__product_type")
+                .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")
+            )
+            server_product_map = {product.id: product for product in server_products}
+        pools = _fetch_comparison_pools(local_products)
+    else:
+        qs = FoodProducts.objects.all()
+        if q:
+            qs = qs.filter(name__icontains=q.strip())
+        if subtype_id:
+            qs = qs.filter(subtype_id=subtype_id)
+        elif type_id:
+            qs = qs.filter(subtype__product_type_id=type_id)
 
-    pools = _fetch_comparison_pools(products)
+        products = list(
+            qs.select_related("subtype", "subtype__product_type")
+            .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")[:2000]
+        )
+        pools = _fetch_comparison_pools(products)
+
     group_metrics: Dict[Tuple[str, Optional[int]], Dict[int, dict]] = {}
     for key, group_products in pools.items():
         group_metrics[key] = _build_group_metrics(
@@ -601,17 +723,19 @@ def recommend(
             nutrient_map=nutrient_map,
             targets_day=targets_day,
             prefs_by_code=prefs_by_code,
+            server_product_map=server_product_map,
         )
 
     items = []
     for product in products:
-        blocked, block_reasons = is_blocked(profile, product)
+        blocked, block_reasons = is_blocked(profile, product, server_product_map=server_product_map)
         if blocked:
             items.append(_make_blocked_item(product, block_reasons))
             continue
 
         group_key = _comparison_group_key(product)
-        metrics = group_metrics.get(group_key, {}).get(product.id, {})
+        product_id = _product_id(product)
+        metrics = group_metrics.get(group_key, {}).get(product_id, {})
         signals = metrics.get("signals", [])
         score_index_s = metrics.get("score_index_s")
         score_percent_100 = metrics.get("score_percent_100")
@@ -630,8 +754,12 @@ def recommend(
             reasons.append("По выбранному профилю активные нутриенты для расчёта не определены.")
 
         comparison_scope, comparison_id = group_key
-        comparison_name = product.subtype.name if comparison_scope == "subtype" and getattr(product, "subtype", None) else getattr(product, "type_name", None)
-        if comparison_scope == "type":
+        comparison_name = (
+            _product_get(product, "subtype_name", "subtypeName")
+            if comparison_scope == "subtype"
+            else _product_get(product, "type_name", "typeName")
+        )
+        if comparison_scope == "type" and not _is_mapping(product):
             comparison_name = getattr(getattr(product, "type", None), "name", None)
 
         score_components = {

@@ -19,7 +19,7 @@ const tabBtn = (active) => ({
   fontWeight: active ? 700 : 500,
 });
 
-export default function ConsumerPage() {
+export default function ConsumerPage({ catalogScope }) {
   const [tab, setTab] = useState("profiles"); // profiles | goals
   const [selectedProfileId, setSelectedProfileId] = useState(null);
 
@@ -65,7 +65,7 @@ export default function ConsumerPage() {
       )}
 
       {tab === "reco" && 
-        <RecommendationsTab profileId={selectedProfileId} />
+        <RecommendationsTab profileId={selectedProfileId} catalogScope={catalogScope} />
       }
     </div>
   );

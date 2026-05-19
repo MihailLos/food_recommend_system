@@ -554,14 +554,15 @@ class NutrientDictionaryViewSet(viewsets.ReadOnlyModelViewSet):
 class RecommendationsView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        profile_id = request.query_params.get("profile")
-        mode = (request.query_params.get("mode") or "catalog").strip()
-        cart_id = request.query_params.get("cart")
-        limit = int(request.query_params.get("limit") or 50)
-        q = request.query_params.get("q")
-        type_id = request.query_params.get("type_id")
-        subtype_id = request.query_params.get("subtype_id")
+    def _build_response(self, request, payload):
+        profile_id = payload.get("profile")
+        mode = str(payload.get("mode") or "catalog").strip()
+        cart_id = payload.get("cart")
+        limit = int(payload.get("limit") or 50)
+        q = payload.get("q")
+        type_id = payload.get("type_id")
+        subtype_id = payload.get("subtype_id")
+        local_products = payload.get("local_products") or None
 
         profile = get_object_or_404(ConsumerProfile, pk=int(profile_id), user=request.user)
         active_goal_exists = ConsumerGoal.objects.filter(
@@ -583,5 +584,12 @@ class RecommendationsView(APIView):
             q=q or None,
             type_id=int(type_id) if type_id else None,
             subtype_id=int(subtype_id) if subtype_id else None,
+            local_products=local_products,
         )
         return Response(data)
+
+    def get(self, request):
+        return self._build_response(request, request.query_params)
+
+    def post(self, request):
+        return self._build_response(request, request.data)

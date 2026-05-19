@@ -116,7 +116,7 @@ export default function App() {
 
       {/* Контент */}
       {tab === "catalog" && <ProductsPage catalogScope={catalogScope} isAuthenticated={Boolean(user)} />}
-      {tab === "consumer" && user && <ConsumerPage user={user} />}
+      {tab === "consumer" && user && <ConsumerPage user={user} catalogScope={catalogScope} />}
       {tab === "auth" && !user && <AuthPage onLogin={handleLogin} />}
     </div>
   );

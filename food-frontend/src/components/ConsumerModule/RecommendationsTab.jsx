@@ -4,6 +4,9 @@ import {
   fetchFoodProductTypes,
   fetchRecommendations,
 } from "../../api/consumer";
+import { fetchCatalogExport } from "../../api/products";
+import { getAllProducts, replaceProducts, setLocalVersion } from "../../db/catalogDb";
+import { normalizeProduct } from "../../utils/normalize";
 
 const box = {
   background: "#fff",
@@ -330,7 +333,7 @@ function DetailsModal({ item, onClose }) {
   );
 }
 
-export default function RecommendationsTab({ profileId }) {
+export default function RecommendationsTab({ profileId, catalogScope }) {
   const [searchText, setSearchText] = useState("");
   const [typeId, setTypeId] = useState("");
   const [subtypeId, setSubtypeId] = useState("");
@@ -430,6 +433,21 @@ export default function RecommendationsTab({ profileId }) {
     loadFilters();
   }, [loadFilters]);
 
+  const ensureLocalCatalog = useCallback(async () => {
+    const localItems = await getAllProducts(catalogScope);
+    if (Array.isArray(localItems) && localItems.length > 0) {
+      return localItems;
+    }
+
+    const exported = await fetchCatalogExport("");
+    const normalizedItems = (exported.items || []).map(normalizeProduct);
+    await replaceProducts(catalogScope, normalizedItems);
+    if (exported.version) {
+      await setLocalVersion(catalogScope, exported.version);
+    }
+    return normalizedItems;
+  }, [catalogScope]);
+
   useEffect(() => {
     if (!profileIdNum) return;
     setHasCalculated(false);
@@ -445,6 +463,7 @@ export default function RecommendationsTab({ profileId }) {
     setLoadingLabel("Расчёт рекомендаций");
     setError("");
     try {
+      const localCatalog = await ensureLocalCatalog();
       const data = await fetchRecommendations({
         profileId: profileIdNum,
         mode: "catalog",
@@ -452,6 +471,7 @@ export default function RecommendationsTab({ profileId }) {
         typeId: typeId || null,
         subtypeId: subtypeId || null,
         limit: 300,
+        localProducts: localCatalog,
       });
       setPayload(data);
       setHasCalculated(true);
@@ -461,7 +481,7 @@ export default function RecommendationsTab({ profileId }) {
     } finally {
       setLoading(false);
     }
-  }, [profileIdNum, searchText, subtypeId, typeId]);
+  }, [ensureLocalCatalog, profileIdNum, searchText, subtypeId, typeId]);
 
   const clearFilters = () => {
     setSearchText("");
@@ -479,6 +499,7 @@ export default function RecommendationsTab({ profileId }) {
     setLoadingLabel("Предварительная загрузка рекомендаций");
     setError("");
     try {
+      const localCatalog = await ensureLocalCatalog();
       const data = await fetchRecommendations({
         profileId: profileIdNum,
         mode: "catalog",
@@ -486,6 +507,7 @@ export default function RecommendationsTab({ profileId }) {
         typeId: null,
         subtypeId: null,
         limit: 5000,
+        localProducts: localCatalog,
       });
       setPayload(data);
     } catch (e) {
@@ -494,7 +516,7 @@ export default function RecommendationsTab({ profileId }) {
     } finally {
       setLoading(false);
     }
-  }, [profileIdNum]);
+  }, [ensureLocalCatalog, profileIdNum]);
 
   useEffect(() => {
     loadOverview();

@@ -98,38 +98,39 @@ export async function fetchRecommendations({
   q = "",
   typeId = null,
   subtypeId = null,
+  localProducts = null,
 }) {
   const pid = Number(profileId);
   if (!Number.isFinite(pid) || pid <= 0) {
     throw new Error("profileId is required");
   }
 
-  const params = new URLSearchParams();
-  params.set("profile", String(pid));
-  params.set("mode", String(mode));
-  params.set("limit", String(limit));
+  const payload = {
+    profile: pid,
+    mode: String(mode),
+    limit,
+  };
 
   if (mode === "cart" && cartId != null) {
-    params.set("cart", String(cartId));
+    payload.cart = String(cartId);
   }
 
   if (mode === "catalog") {
     const search = String(q || "").trim();
-
     if (search) {
-      params.set("q", search);
+      payload.q = search;
     }
-
     if (typeId != null && String(typeId).trim() !== "") {
-      params.set("type_id", String(typeId));
+      payload.type_id = String(typeId);
     }
-
     if (subtypeId != null && String(subtypeId).trim() !== "") {
-      params.set("subtype_id", String(subtypeId));
+      payload.subtype_id = String(subtypeId);
     }
   }
 
-  return client
-    .get(`/api/consumer/recommendations/?${params.toString()}`)
-    .then((r) => r.data);
+  if (Array.isArray(localProducts) && localProducts.length > 0) {
+    payload.local_products = localProducts;
+  }
+
+  return client.post(`/api/consumer/recommendations/`, payload).then((r) => r.data);
 }

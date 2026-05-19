@@ -197,7 +197,7 @@ export default function NutrientTable({ items, columns, onSaveRow = async () => 
         <thead>
           {/* строка 1: кнопки-группы */}
           <tr>
-            <th style={{ ...th, width: 140 }} /> {/* колонка кнопок */}
+            <th style={{ ...th, width: 72 }} /> {/* колонка кнопок */}
             <th style={th}>{nameColumn.label}</th>
             {groups.map(g => (
               <th
@@ -251,7 +251,7 @@ export default function NutrientTable({ items, columns, onSaveRow = async () => 
             return (
               <tr key={r.id}>
                 {/* ячейка с кнопками */}
-                <td style={{ ...td, minWidth: 140 }}>
+                <td style={{ ...td, minWidth: 72, width: 72 }}>
 	                  {!isEdit ? (
 	                    <button type="button" style={btn} onClick={() => startEdit(r)} title="Изменить локально" aria-label="Изменить локально">
 	                      ✏️
