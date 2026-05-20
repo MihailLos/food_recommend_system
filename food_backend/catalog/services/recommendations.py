@@ -826,12 +826,18 @@ def _build_group_metrics(
 
 def _summary_from_signals(product: Any, signals: List[dict], class_label: str, category_rule: Optional[dict] = None) -> dict:
     preferred = sorted(
-        [s for s in signals if s["direction"] == "preferred"],
+        [
+            s for s in signals
+            if s["direction"] == "preferred" and (_safe_float(s.get("value_100g")) or 0.0) > 0.0
+        ],
         key=lambda s: (s["correspondence_a"], s["percentile_q"]),
         reverse=True,
     )
     restricted = sorted(
-        [s for s in signals if s["direction"] == "restricted"],
+        [
+            s for s in signals
+            if s["direction"] == "restricted" and (_safe_float(s.get("value_100g")) or 0.0) > 0.0
+        ],
         key=lambda s: (s["correspondence_a"], -(s["percentile_q"])),
     )
 
@@ -955,7 +961,7 @@ def recommend(
             items.append(_make_blocked_item(product, block_reasons))
             continue
 
-        group_key = _comparison_group_key(product)
+        group_key = ("global", None) if comparison_mode == COMPARISON_MODE_GLOBAL else _comparison_group_key(product)
         product_id = _product_id(product)
         metrics = group_metrics.get(group_key, {}).get(product_id, {})
         signals = metrics.get("signals", [])

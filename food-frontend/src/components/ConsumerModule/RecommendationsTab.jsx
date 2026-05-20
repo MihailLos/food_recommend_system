@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchFoodProductSubtypes,
   fetchFoodProductTypes,
@@ -421,6 +421,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const [selectedItem, setSelectedItem] = useState(null);
   const [hasCalculated, setHasCalculated] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("Загрузка рекомендаций");
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingDetail, setLoadingDetail] = useState("");
+  const loadingTimerRef = useRef(null);
 
   const items = useMemo(() => normalizeList(payload?.items ?? payload), [payload]);
   const profileIdNum = useMemo(() => {
@@ -523,6 +526,22 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     return normalizedItems;
   }, [catalogScope]);
 
+  const stopLoadingProgress = useCallback(() => {
+    if (loadingTimerRef.current) {
+      clearInterval(loadingTimerRef.current);
+      loadingTimerRef.current = null;
+    }
+  }, []);
+
+  const startLoadingProgress = useCallback((initialProgress, detail) => {
+    stopLoadingProgress();
+    setLoadingProgress(initialProgress);
+    setLoadingDetail(detail);
+    loadingTimerRef.current = setInterval(() => {
+      setLoadingProgress((current) => (current >= 88 ? current : current + 3));
+    }, 700);
+  }, [stopLoadingProgress]);
+
   useEffect(() => {
     if (!profileIdNum) return;
     setHasCalculated(false);
@@ -543,9 +562,16 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
 
     setLoading(true);
     setLoadingLabel("Расчёт рекомендаций");
+    setLoadingProgress(8);
+    setLoadingDetail("Подготовка локального каталога");
     setError("");
     try {
       const localCatalog = await ensureLocalCatalog();
+      setLoadingProgress(24);
+      setLoadingDetail("Подготовка данных для расчёта");
+      const localPayload = toRecommendationPayload(localCatalog);
+      setLoadingProgress(36);
+      startLoadingProgress(42, "Расчёт рекомендаций на сервере");
       const data = await fetchRecommendations({
         profileId: profileIdNum,
         mode: "catalog",
@@ -554,17 +580,22 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         typeId: typeId || null,
         subtypeId: subtypeId || null,
         limit: 300,
-        localProducts: toRecommendationPayload(localCatalog),
+        localProducts: localPayload,
       });
+      stopLoadingProgress();
+      setLoadingProgress(96);
+      setLoadingDetail("Подготовка результата");
       setPayload(data);
       setHasCalculated(true);
     } catch (e) {
+      stopLoadingProgress();
       setPayload(null);
       setError(getRecommendationErrorDetail(e));
     } finally {
+      setLoadingProgress(100);
       setLoading(false);
     }
-  }, [comparisonMode, ensureLocalCatalog, profileIdNum, searchText, subtypeId, typeId]);
+  }, [comparisonMode, ensureLocalCatalog, profileIdNum, searchText, startLoadingProgress, stopLoadingProgress, subtypeId, typeId]);
 
   const clearFilters = () => {
     setSearchText("");
@@ -584,9 +615,16 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
 
     setLoading(true);
     setLoadingLabel("Предварительная загрузка рекомендаций");
+    setLoadingProgress(8);
+    setLoadingDetail("Подготовка локального каталога");
     setError("");
     try {
       const localCatalog = await ensureLocalCatalog();
+      setLoadingProgress(24);
+      setLoadingDetail("Подготовка данных для обзора");
+      const localPayload = toRecommendationPayload(localCatalog);
+      setLoadingProgress(36);
+      startLoadingProgress(42, "Построение обзора по текущей выборке");
       const data = await fetchRecommendations({
         profileId: profileIdNum,
         mode: "catalog",
@@ -595,16 +633,21 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         typeId: null,
         subtypeId: null,
         limit: 5000,
-        localProducts: toRecommendationPayload(localCatalog),
+        localProducts: localPayload,
       });
+      stopLoadingProgress();
+      setLoadingProgress(96);
+      setLoadingDetail("Подготовка результата");
       setPayload(data);
     } catch (e) {
+      stopLoadingProgress();
       setPayload(null);
       setError(getRecommendationErrorDetail(e));
     } finally {
+      setLoadingProgress(100);
       setLoading(false);
     }
-  }, [comparisonMode, ensureLocalCatalog, profileIdNum]);
+  }, [comparisonMode, ensureLocalCatalog, profileIdNum, startLoadingProgress, stopLoadingProgress]);
 
   useEffect(() => {
     if (comparisonMode === "global") {
@@ -613,6 +656,8 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     }
     setPayload(null);
   }, [comparisonMode, loadOverview]);
+
+  useEffect(() => () => stopLoadingProgress(), [stopLoadingProgress]);
 
   const statsTitle = hasCalculated ? "Распределение по классам" : "Обзор по всем группам и подгруппам";
   const showItems = hasCalculated && items.length > 0;
@@ -646,24 +691,23 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
             <div style={{ color: "#555", lineHeight: 1.5 }}>
               Пожалуйста, дождитесь завершения расчёта. В это время результаты и статистика обновляются для текущего профиля.
             </div>
+            <div style={{ fontSize: 13, color: "#555" }}>
+              {loadingDetail || "Выполняется расчёт..."}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, color: "#2f5f32", fontWeight: 600 }}>
+              <span>Готовность</span>
+              <span>{Math.max(0, Math.min(100, Math.round(loadingProgress)))}%</span>
+            </div>
             <div style={{ height: 12, borderRadius: 999, background: "#edf3ec", overflow: "hidden" }}>
               <div
                 style={{
-                  width: "100%",
+                  width: `${Math.max(4, Math.min(100, loadingProgress))}%`,
                   height: "100%",
                   background: "linear-gradient(90deg, #2e7d32 0%, #66bb6a 100%)",
-                  animation: "recommendation-loader 1.2s ease-in-out infinite",
-                  transformOrigin: "left center",
+                  transition: "width 280ms ease",
                 }}
               />
             </div>
-            <style>{`
-              @keyframes recommendation-loader {
-                0% { transform: scaleX(0.18); opacity: 0.55; }
-                50% { transform: scaleX(0.72); opacity: 1; }
-                100% { transform: scaleX(0.18); opacity: 0.55; }
-              }
-            `}</style>
           </div>
         </div>
       )}
