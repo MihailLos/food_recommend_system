@@ -78,6 +78,10 @@ export async function replaceGoalPreferences(goalId, prefsList) {
   return client.put(`/api/consumer/goals/${goalId}/preferences/`, prefsList).then(r => r.data);
 }
 
+export async function fetchGoalBaseProfiles() {
+  return client.get(`/api/consumer/goals/base-profiles/`).then(r => r.data);
+}
+
 export async function fetchNutrientsDictionary() {
   return client.get(`/api/nutrients-dictionary/`).then(r => r.data);
 }

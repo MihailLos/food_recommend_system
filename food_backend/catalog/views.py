@@ -38,7 +38,7 @@ from django.db.models import Count, Max
 from django.shortcuts import get_object_or_404
 
 from catalog.utils.allergens import get_allergens_for_product
-from catalog.services.recommendations import recommend
+from catalog.services.recommendations import recommend, get_goal_nutrient_profiles_payload
 
 User = get_user_model()
 
@@ -527,6 +527,10 @@ class ConsumerGoalViewSet(viewsets.ModelViewSet):
 
         qs = GoalNutrientPreference.objects.filter(goal=goal).order_by("id")
         return Response(GoalNutrientPreferenceSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=["get"], url_path="base-profiles")
+    def base_profiles(self, request):
+        return Response(get_goal_nutrient_profiles_payload())
 
 class ProfileTargetsView(APIView):
     permission_classes = [IsAuthenticated]

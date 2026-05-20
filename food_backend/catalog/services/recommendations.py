@@ -1,5 +1,6 @@
 from statistics import median
 from typing import Any, Dict, List, Optional, Tuple
+import re
 
 from django.shortcuts import get_object_or_404
 
@@ -387,6 +388,23 @@ def _normalize_text(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _tokenize_text(value: Any) -> List[str]:
+    return [token for token in re.split(r"[^a-zA-Zа-яА-Я0-9]+", _normalize_text(value)) if token]
+
+
+def _matches_rule_name(name: Any, phrase: str) -> bool:
+    words = _tokenize_text(name)
+    if not words:
+        return False
+    rule_parts = _tokenize_text(phrase)
+    if not rule_parts:
+        return False
+    for part in rule_parts:
+        if not any(word.startswith(part) for word in words):
+            return False
+    return True
+
+
 def _build_default_roles(
     goal_type: Optional[str],
     nutrient_map: Dict[str, NutrientDictionary],
@@ -495,7 +513,7 @@ def _match_goal_category_rule(goal_type: Optional[str], product: Any) -> Optiona
         subtype_name = _normalize_text(getattr(getattr(product, "subtype", None), "name", None))
 
     for token in rules["preferred_subtypes"]:
-        if token in subtype_name:
+        if _matches_rule_name(subtype_name, token):
             return {
                 "scope": "subtype",
                 "scope_name": _product_get(product, "subtype_name", "subtypeName") or getattr(getattr(product, "subtype", None), "name", None),
@@ -503,7 +521,7 @@ def _match_goal_category_rule(goal_type: Optional[str], product: Any) -> Optiona
                 "token": token,
             }
     for token in rules["restricted_subtypes"]:
-        if token in subtype_name:
+        if _matches_rule_name(subtype_name, token):
             return {
                 "scope": "subtype",
                 "scope_name": _product_get(product, "subtype_name", "subtypeName") or getattr(getattr(product, "subtype", None), "name", None),
@@ -512,7 +530,7 @@ def _match_goal_category_rule(goal_type: Optional[str], product: Any) -> Optiona
             }
 
     for token in rules["preferred_types"]:
-        if token in type_name:
+        if _matches_rule_name(type_name, token):
             return {
                 "scope": "type",
                 "scope_name": _product_get(product, "type_name", "typeName") or getattr(getattr(product, "type", None), "name", None),
@@ -520,7 +538,7 @@ def _match_goal_category_rule(goal_type: Optional[str], product: Any) -> Optiona
                 "token": token,
             }
     for token in rules["restricted_types"]:
-        if token in type_name:
+        if _matches_rule_name(type_name, token):
             return {
                 "scope": "type",
                 "scope_name": _product_get(product, "type_name", "typeName") or getattr(getattr(product, "type", None), "name", None),
@@ -528,6 +546,16 @@ def _match_goal_category_rule(goal_type: Optional[str], product: Any) -> Optiona
                 "token": token,
             }
     return None
+
+
+def get_goal_nutrient_profiles_payload() -> Dict[str, dict]:
+    return {
+        goal_type: {
+            "preferred": sorted(profile.get("preferred", [])),
+            "restricted": sorted(profile.get("restricted", [])),
+        }
+        for goal_type, profile in GOAL_NUTRIENT_PROFILES.items()
+    }
 
 
 def _median(values: List[float]) -> Optional[float]:

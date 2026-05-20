@@ -603,9 +603,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     setSubtypeId("");
     setSelectedItem(null);
     setHasCalculated(false);
-    if (comparisonMode === "global") {
-      loadOverview();
-    } else {
+    if (comparisonMode !== "global") {
       setPayload(null);
     }
   };
@@ -629,9 +627,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         profileId: profileIdNum,
         mode: "catalog",
         comparisonMode,
-        q: "",
-        typeId: null,
-        subtypeId: null,
+        q: searchText,
+        typeId: typeId || null,
+        subtypeId: subtypeId || null,
         limit: 5000,
         localProducts: localPayload,
       });
@@ -647,17 +645,21 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       setLoadingProgress(100);
       setLoading(false);
     }
-  }, [comparisonMode, ensureLocalCatalog, profileIdNum, startLoadingProgress, stopLoadingProgress]);
+  }, [comparisonMode, ensureLocalCatalog, profileIdNum, searchText, startLoadingProgress, stopLoadingProgress, subtypeId, typeId]);
 
   useEffect(() => {
     if (comparisonMode === "global") {
-      loadOverview();
-      return;
+      const timer = setTimeout(() => {
+        loadOverview();
+      }, 300);
+      return () => clearTimeout(timer);
     }
     setPayload(null);
-  }, [comparisonMode, loadOverview]);
+  }, [comparisonMode, loadOverview, searchText, subtypeId, typeId]);
 
   useEffect(() => () => stopLoadingProgress(), [stopLoadingProgress]);
+
+  const globalFiltersActive = Boolean(String(searchText || "").trim() || typeId || subtypeId);
 
   const statsTitle = hasCalculated ? "Распределение по классам" : "Обзор по всем группам и подгруппам";
   const showItems = hasCalculated && items.length > 0;
@@ -667,7 +669,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     ? (isGlobalMode
         ? "Статистика по текущей отфильтрованной выборке в режиме сравнения по всему перечню."
         : "Статистика по текущей выборке внутри режима сравнения по подгруппам.")
-    : "Статистика по всем доступным группам и подгруппам для активного профиля.";
+    : globalFiltersActive
+      ? "Статистика по текущей отфильтрованной выборке для активного профиля."
+      : "Статистика по всем доступным группам и подгруппам для активного профиля.";
 
   const topPreferredLabel = "Топ-3 подгруппы по наиболее предпочтительным продуктам";
   const topGroupPreferredLabel = "Топ-3 группы по наиболее предпочтительным продуктам";
@@ -676,7 +680,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const resultCountLabel = hasCalculated
     ? `Найдено продуктов: ${items.length}`
     : comparisonMode === "global"
-      ? `Для обзора учтены все ${items.length} продуктов текущего профиля`
+      ? (globalFiltersActive
+          ? `Для обзора учтены ${items.length} продуктов текущей отфильтрованной выборки`
+          : `Для обзора учтены все ${items.length} продуктов текущего профиля`)
       : "Выберите фильтры и нажмите «Рассчитать», чтобы сравнить продукты внутри подгрупп.";
 
   const showSubtypeStats = !subtypeId;

@@ -10,6 +10,7 @@ import {
   fetchGoalPreferences,
   replaceGoalPreferences,
   fetchNutrientsDictionary,
+  fetchGoalBaseProfiles,
 } from "../../api/consumer";
 
 const box = {
@@ -51,73 +52,18 @@ const goalTypeLabels = {
   maintain: "Поддержание массы",
 };
 
-const goalBaseProfiles = {
+const fallbackGoalBaseProfiles = {
   lose_weight: {
-    preferred: [
-      "protein_g",
-      "dietary_fiber_g",
-      "pufa_g",
-      "a_mg",
-      "beta_carotene_mg",
-      "b1_mg",
-      "b2_mg",
-      "c_mg",
-      "niacin_index",
-      "ca_mg",
-      "fe_mg",
-      "k_mg",
-      "mg_mg",
-      "p_mg",
-    ],
-    restricted: [
-      "energy_kcal",
-      "nlc_g",
-      "cholesterol_g",
-      "na_mg",
-      "alcohol_pct",
-    ],
+    preferred: ["protein_g", "dietary_fiber_g", "pufa_g", "a_mg", "beta_carotene_mg", "b1_mg", "b2_mg", "c_mg", "niacin_index", "ca_mg", "fe_mg", "k_mg", "mg_mg", "p_mg"],
+    restricted: ["energy_kcal", "nlc_g", "cholesterol_g", "na_mg", "alcohol_pct"],
   },
   maintain: {
-    preferred: [
-      "protein_g",
-      "fats_g",
-      "carbs_g",
-      "dietary_fiber_g",
-      "a_mg",
-      "beta_carotene_mg",
-      "b1_mg",
-      "b2_mg",
-      "c_mg",
-      "niacin_index",
-      "ca_mg",
-      "fe_mg",
-      "k_mg",
-      "mg_mg",
-      "p_mg",
-    ],
-    restricted: [
-      "nlc_g",
-      "mds_g",
-      "na_mg",
-      "alcohol_pct",
-    ],
+    preferred: ["protein_g", "fats_g", "carbs_g", "dietary_fiber_g", "a_mg", "beta_carotene_mg", "b1_mg", "b2_mg", "c_mg", "niacin_index", "ca_mg", "fe_mg", "k_mg", "mg_mg", "p_mg"],
+    restricted: ["nlc_g", "mds_g", "na_mg", "alcohol_pct"],
   },
   gain_muscle: {
-    preferred: [
-      "energy_kcal",
-      "protein_g",
-      "fats_g",
-      "carbs_g",
-      "mg_mg",
-      "fe_mg",
-      "ca_mg",
-      "water_g",
-    ],
-    restricted: [
-      "nlc_g",
-      "mds_g",
-      "alcohol_pct",
-    ],
+    preferred: ["energy_kcal", "protein_g", "fats_g", "carbs_g", "mg_mg", "fe_mg", "ca_mg", "water_g"],
+    restricted: ["nlc_g", "mds_g", "alcohol_pct"],
   },
 };
 
@@ -414,6 +360,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [profile, setProfile] = useState(null);
   const [targets, setTargets] = useState(null);
   const [nutrients, setNutrients] = useState([]);
+  const [goalBaseProfiles, setGoalBaseProfiles] = useState(fallbackGoalBaseProfiles);
   const [prefs, setPrefs] = useState([]); // [{ nutrient_code, direction }]
   const [prefsLoading, setPrefsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState("idle");
@@ -554,9 +501,17 @@ export default function ConsumerGoalsTab({ profileId }) {
       try {
         // 1) справочник нутриентов (грузим один раз)
         if (nutrients.length === 0) {
-          const dictRaw = await fetchNutrientsDictionary();
+          const [dictRaw, baseProfilesRaw] = await Promise.all([
+            fetchNutrientsDictionary(),
+            fetchGoalBaseProfiles(),
+          ]);
           const dict = normalizeList(dictRaw);
-          if (!cancelled) setNutrients(dict);
+          if (!cancelled) {
+            setNutrients(dict);
+            if (baseProfilesRaw && typeof baseProfilesRaw === "object") {
+              setGoalBaseProfiles(baseProfilesRaw);
+            }
+          }
         }
 
         // 2) preferences по цели
@@ -866,7 +821,7 @@ export default function ConsumerGoalsTab({ profileId }) {
     ? `${selectedGoal.title || goalTypeLabels[selectedGoal.goal_type] || selectedGoal.goal_type}${selectedGoal.energy_delta_kcal ? `, ${selectedGoal.energy_delta_kcal > 0 ? "+" : ""}${selectedGoal.energy_delta_kcal} ккал/сут` : ""}`
     : "Новая цель";
 
-  const currentBaseProfile = goalBaseProfiles[form.goal_type] || goalBaseProfiles.maintain;
+  const currentBaseProfile = goalBaseProfiles[form.goal_type] || goalBaseProfiles.maintain || fallbackGoalBaseProfiles.maintain;
   const nutrientCodeSet = useMemo(
     () => new Set((nutrients || []).map((item) => item.code)),
     [nutrients]
