@@ -76,6 +76,12 @@ const dragItemStyles = {
   fontSize: 13,
 };
 
+function round2(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.round(num * 100) / 100;
+}
+
 function HelpPopover({ title, children }) {
   const [open, setOpen] = React.useState(false);
 
@@ -808,18 +814,17 @@ export default function ConsumerGoalsTab({ profileId }) {
     }
   };
 
-  const macrosModeLabel =
-  targets?.macros_mode === "manual"
-    ? "ручной"
-    : targets?.macros_mode === "mr_table"
-      ? "по нормативам МР"
-      : targets?.macros_mode || "—";
   const bmiValue = Number(profile?.bmi);
   const isObesityProfile = Number.isFinite(bmiValue) && bmiValue >= 30;
   const energyRange = form.goal_type === "lose_weight" && isObesityProfile ? { min: 500, max: 700 } : { min: 250, max: 500 };
-  const selectedGoalTitle = selectedGoal
-    ? `${selectedGoal.title || goalTypeLabels[selectedGoal.goal_type] || selectedGoal.goal_type}${selectedGoal.energy_delta_kcal ? `, ${selectedGoal.energy_delta_kcal > 0 ? "+" : ""}${selectedGoal.energy_delta_kcal} ккал/сут` : ""}`
-    : "Новая цель";
+  const rawPreviewDelta = form.energy_delta_kcal === "" || form.energy_delta_kcal == null ? 0 : Number(form.energy_delta_kcal);
+  const previewEnergyDelta =
+    form.goal_type === "lose_weight"
+      ? -Math.abs(rawPreviewDelta)
+      : form.goal_type === "gain_muscle"
+        ? Math.abs(rawPreviewDelta)
+        : (energyDirection === "-" ? -Math.abs(rawPreviewDelta) : Math.abs(rawPreviewDelta));
+  const selectedGoalTitle = `${form.title || goalTypeLabels[form.goal_type] || form.goal_type}${previewEnergyDelta ? `, ${previewEnergyDelta > 0 ? "+" : ""}${previewEnergyDelta} ккал/сут` : ""}`;
 
   const currentBaseProfile = goalBaseProfiles[form.goal_type] || goalBaseProfiles.maintain || fallbackGoalBaseProfiles.maintain;
   const nutrientCodeSet = useMemo(
@@ -845,6 +850,74 @@ export default function ConsumerGoalsTab({ profileId }) {
     () => [...nutrients].sort((a, b) => String(a.ru_name || "").localeCompare(String(b.ru_name || ""), "ru")),
     [nutrients]
   );
+
+  const previewTargets = useMemo(() => {
+    if (!targets) return null;
+
+    const tdee = Number(targets?.energy_calc?.tdee_kcal_day);
+    if (!Number.isFinite(tdee)) {
+      return targets;
+    }
+
+    const targetEnergyBase = Math.max(0, tdee + previewEnergyDelta);
+    const usingManualMacros =
+      manualMacros &&
+      Number.isFinite(Number(form.protein_pct)) &&
+      Number.isFinite(Number(form.fat_pct)) &&
+      Number.isFinite(Number(form.carb_pct));
+
+    const proteinPct = usingManualMacros ? Number(form.protein_pct) : Number(targets?.mr_norms?.protein_pct || 0);
+    const fatPct = usingManualMacros ? Number(form.fat_pct) : Number(targets?.mr_norms?.fat_pct || 0);
+    const carbPct = usingManualMacros ? Number(form.carb_pct) : Number(targets?.mr_norms?.carb_pct || 0);
+
+    const targetProtein = round2(targetEnergyBase * proteinPct / 100 / 4);
+    const targetFat = round2(targetEnergyBase * fatPct / 100 / 9);
+    const targetCarb = round2(targetEnergyBase * carbPct / 100 / 4);
+    const targetNlc = round2(targetEnergyBase * 0.10 / 9);
+
+    return {
+      ...targets,
+      goal_type: form.goal_type,
+      energy_delta_kcal: previewEnergyDelta,
+      target_energy_base_kcal_day: round2(targetEnergyBase),
+      target_energy_kcal_day: round2(targetEnergyBase),
+      macros_mode: usingManualMacros ? "manual" : "mr_table",
+      macros_pct: {
+        protein_pct: round2(proteinPct),
+        fat_pct: round2(fatPct),
+        carb_pct: round2(carbPct),
+      },
+      target_macros_g_day: {
+        protein_g: targetProtein,
+        fat_g: targetFat,
+        carb_g: targetCarb,
+      },
+      target_fat_acids_day: {
+        ...(targets.target_fat_acids_day || {}),
+        nlc_g: targetNlc,
+        pufa_g: targetNlc,
+      },
+      debug: {
+        ...(targets.debug || {}),
+        target_energy_source: "tdee_plus_goal_delta_preview",
+      },
+    };
+  }, [
+    form.carb_pct,
+    form.fat_pct,
+    form.goal_type,
+    form.protein_pct,
+    manualMacros,
+    previewEnergyDelta,
+    targets,
+  ]);
+  const displayedTargets = previewTargets || targets;
+  const macrosModeLabel =
+  displayedTargets?.macros_mode === "manual"
+    ? "ручной"
+    : displayedTargets?.macros_mode === "mr_table"
+      ? "по нормативам МР"
+      : displayedTargets?.macros_mode || "—";
 
   const customPreferredCodes = useMemo(
     () => prefs.filter((p) => p.direction === "more").map((p) => p.nutrient_code),
@@ -1378,7 +1451,7 @@ export default function ConsumerGoalsTab({ profileId }) {
         </div>
 
         <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>
-          Ниже показаны целевые значения питания, рассчитанные для выбранного профиля и активной цели.
+          Ниже показаны целевые значения питания для выбранного профиля и текущей редактируемой цели. После автосохранения эти же значения станут серверным источником расчёта.
         </div>
 
         <div
@@ -1393,111 +1466,111 @@ export default function ConsumerGoalsTab({ profileId }) {
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
             Расчёт суточных целевых показателей
             <HelpPopover title="Что это за блок">
-              <TargetHelp type="targets" targets={targets} profile={profile} />
+              <TargetHelp type="targets" targets={displayedTargets} profile={profile} />
             </HelpPopover>
           </div>
-          {!targets ? (
+          {!displayedTargets ? (
             <div style={{ color: "#666", fontSize: 13 }}>Нет данных</div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 8, fontSize: 14 }}>
               <div>
                 TDEE, ккал/сут
                 <HelpPopover title="TDEE">
-                  <TargetHelp type="tdee" targets={targets} profile={profile} />
+                  <TargetHelp type="tdee" targets={displayedTargets} profile={profile} />
                 </HelpPopover>
               </div>
-              <div>{targets?.energy_calc?.tdee_kcal_day ?? "—"}</div>
+              <div>{displayedTargets?.energy_calc?.tdee_kcal_day ?? "—"}</div>
 
               <div>
                 База целевой энергии, ккал/сут
                 <HelpPopover title="База целевой энергии">
-                  <TargetHelp type="baseEnergy" targets={targets} profile={profile} />
+                  <TargetHelp type="baseEnergy" targets={displayedTargets} profile={profile} />
                 </HelpPopover>
               </div>
-              <div>{targets?.target_energy_base_kcal_day ?? "—"}</div>
+              <div>{displayedTargets?.target_energy_base_kcal_day ?? "—"}</div>
 
               <div>
                 Целевая энергия, ккал/сут
                 <HelpPopover title="Целевая энергия">
-                  <TargetHelp type="targetEnergy" targets={targets} profile={profile} />
+                  <TargetHelp type="targetEnergy" targets={displayedTargets} profile={profile} />
                 </HelpPopover>
               </div>
-              <div>{targets.target_energy_kcal_day}</div>
+              <div>{displayedTargets.target_energy_kcal_day}</div>
 
-              {"macros_mode" in targets && (
+              {"macros_mode" in displayedTargets && (
                 <>
                   <div>
                     Режим БЖУ
                     <HelpPopover title="Откуда взят режим БЖУ">
-                      <TargetHelp type="macrosMode" targets={targets} profile={profile} />
+                      <TargetHelp type="macrosMode" targets={displayedTargets} profile={profile} />
                     </HelpPopover>
                   </div>
                   <div>{macrosModeLabel}</div>
                 </>
               )}
 
-              {targets.macros_pct && (
+              {displayedTargets.macros_pct && (
                 <>
                   <div>
                     БЖУ, %
                     <HelpPopover title="Почему именно такие проценты БЖУ">
-                      <TargetHelp type="macrosPct" targets={targets} profile={profile} />
+                      <TargetHelp type="macrosPct" targets={displayedTargets} profile={profile} />
                     </HelpPopover>
                   </div>
                   <div>
-                    Б {targets.macros_pct.protein_pct} / Ж {targets.macros_pct.fat_pct} / У{" "}
-                    {targets.macros_pct.carb_pct}
+                    Б {displayedTargets.macros_pct.protein_pct} / Ж {displayedTargets.macros_pct.fat_pct} / У{" "}
+                    {displayedTargets.macros_pct.carb_pct}
                   </div>
                 </>
               )}
 
-              {targets.target_macros_g_day && (
+              {displayedTargets.target_macros_g_day && (
                 <>
                   <div>
                     Белок, г/сут
                     <HelpPopover title="Расчёт белка">
-                      <TargetHelp type="protein" targets={targets} profile={profile} />
+                      <TargetHelp type="protein" targets={displayedTargets} profile={profile} />
                     </HelpPopover>
                   </div>
-                  <div>{targets.target_macros_g_day.protein_g}</div>
+                  <div>{displayedTargets.target_macros_g_day.protein_g}</div>
                   <div>
                     Жиры, г/сут
                     <HelpPopover title="Расчёт жиров">
-                      <TargetHelp type="fat" targets={targets} profile={profile} />
+                      <TargetHelp type="fat" targets={displayedTargets} profile={profile} />
                     </HelpPopover>
                   </div>
-                  <div>{targets.target_macros_g_day.fat_g}</div>
+                  <div>{displayedTargets.target_macros_g_day.fat_g}</div>
                   <div>
                     Углеводы, г/сут
                     <HelpPopover title="Расчёт углеводов">
-                      <TargetHelp type="carb" targets={targets} profile={profile} />
+                      <TargetHelp type="carb" targets={displayedTargets} profile={profile} />
                     </HelpPopover>
                   </div>
-                  <div>{targets.target_macros_g_day.carb_g}</div>
+                  <div>{displayedTargets.target_macros_g_day.carb_g}</div>
                 </>
               )}
 
-              {targets.target_minerals_day && (
+              {displayedTargets.target_minerals_day && (
                 <>
                   <div>
                     Натрий, мг/сут
                     <HelpPopover title="Откуда взят натрий">
-                      <TargetHelp type="sodium" targets={targets} profile={profile} />
+                      <TargetHelp type="sodium" targets={displayedTargets} profile={profile} />
                     </HelpPopover>
                   </div>
-                  <div>{targets.target_minerals_day.na_mg ?? "—"}</div>
+                  <div>{displayedTargets.target_minerals_day.na_mg ?? "—"}</div>
                 </>
               )}
 
-              {targets.target_fat_acids_day && (
+              {displayedTargets.target_fat_acids_day && (
                 <>
                   <div>
                     НЖК, г/сут
                     <HelpPopover title="Расчёт НЖК">
-                      <TargetHelp type="nlc" targets={targets} profile={profile} />
+                      <TargetHelp type="nlc" targets={displayedTargets} profile={profile} />
                     </HelpPopover>
                   </div>
-                  <div>{targets.target_fat_acids_day.nlc_g ?? "—"}</div>
+                  <div>{displayedTargets.target_fat_acids_day.nlc_g ?? "—"}</div>
                 </>
               )}
             </div>
