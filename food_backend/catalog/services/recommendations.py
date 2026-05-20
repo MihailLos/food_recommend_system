@@ -198,6 +198,18 @@ CLASS_META = {
     "excluded": {"label": "Исключено", "color": "blocked", "rank": 0},
 }
 
+GOAL_EXPLAIN_META = {
+    ConsumerGoal.GOAL_LOSE_WEIGHT: {
+        "title": "снижения массы тела",
+    },
+    ConsumerGoal.GOAL_MAINTAIN: {
+        "title": "поддержания массы тела",
+    },
+    ConsumerGoal.GOAL_GAIN_MUSCLE: {
+        "title": "увеличения энергетической обеспеченности",
+    },
+}
+
 VITAMIN_TARGET_NAMES = {
     "a_mg": "A_Vitamin (mg)",
     "beta_carotene_mg": "Beta_Carotene (mg)",
@@ -655,14 +667,58 @@ def _format_level(share_pct: Optional[float]) -> Optional[str]:
 
 def _format_percentile_text(percentile_q: float) -> str:
     pct = round(percentile_q * 100.0, 1)
-    return f"выше, чем у {pct}% аналогов"
+    return f"Содержится больше, чем у {pct}% аналогов."
 
 
-def _format_correspondence_text(direction: str, correspondence_a: float) -> str:
-    pct = round(correspondence_a * 100.0, 1)
+def _goal_context_title(goal_type: Optional[str]) -> str:
+    return (GOAL_EXPLAIN_META.get(goal_type) or {}).get("title") or "выбранной цели"
+
+
+def _impact_strength(direction: str, percentile_q: float, correspondence_a: float) -> dict:
+    value = correspondence_a if direction == "preferred" else percentile_q
+    if value >= 0.75:
+        return {"code": "strong", "label": "сильный", "score": value}
+    if value >= 0.55:
+        return {"code": "moderate", "label": "умеренный", "score": value}
+    return {"code": "weak", "label": "слабый", "score": value}
+
+
+def _build_reason_factor(signal: dict, goal_type: Optional[str]) -> dict:
+    direction = signal["direction"]
+    strength = _impact_strength(direction, signal["percentile_q"], signal["correspondence_a"])
+    goal_title = _goal_context_title(goal_type)
+    nutrient_name = signal["ru_name"]
+    detail = _format_percentile_text(signal["percentile_q"])
+
     if direction == "preferred":
-        return f"полезный вклад {pct}%"
-    return f"ограничивающий вклад {pct}%"
+        title = f"Для цели {goal_title} {nutrient_name.lower()} является {strength['label']} положительным фактором."
+        if strength["code"] == "strong":
+            short = f"{nutrient_name} сильно повышает оценку"
+        elif strength["code"] == "moderate":
+            short = f"{nutrient_name} умеренно повышает оценку"
+        else:
+            short = f"{nutrient_name} слегка повышает оценку"
+    else:
+        title = f"Для цели {goal_title} повышенное содержание нутриента «{nutrient_name}» является {strength['label']} ограничивающим фактором."
+        if strength["code"] == "strong":
+            short = f"{nutrient_name} сильно ограничивает рекомендацию"
+        elif strength["code"] == "moderate":
+            short = f"{nutrient_name} заметно ограничивает рекомендацию"
+        else:
+            short = f"{nutrient_name} слегка ограничивает рекомендацию"
+
+    return {
+        "code": signal["code"],
+        "ru_name": nutrient_name,
+        "direction": direction,
+        "strength_code": strength["code"],
+        "strength_label": strength["label"],
+        "percentile_q": signal["percentile_q"],
+        "correspondence_a": signal["correspondence_a"],
+        "title": title,
+        "short_text": short,
+        "detail_text": detail,
+    }
 
 
 def _build_signal(
@@ -852,7 +908,13 @@ def _build_group_metrics(
     }
 
 
-def _summary_from_signals(product: Any, signals: List[dict], class_label: str, category_rule: Optional[dict] = None) -> dict:
+def _summary_from_signals(
+    product: Any,
+    signals: List[dict],
+    class_label: str,
+    category_rule: Optional[dict] = None,
+    goal_type: Optional[str] = None,
+) -> dict:
     preferred = sorted(
         [
             s for s in signals
@@ -869,20 +931,16 @@ def _summary_from_signals(product: Any, signals: List[dict], class_label: str, c
         key=lambda s: (s["correspondence_a"], -(s["percentile_q"])),
     )
 
-    positive_reasons = [
-        f"{s['ru_name']}: {_format_percentile_text(s['percentile_q'])}, {_format_correspondence_text(s['direction'], s['correspondence_a'])}"
-        for s in preferred[:3]
-    ]
-    limiting_reasons = [
-        f"{s['ru_name']}: {_format_percentile_text(s['percentile_q'])}, {_format_correspondence_text(s['direction'], s['correspondence_a'])}"
-        for s in restricted[:3]
-    ]
+    positive_factors = [_build_reason_factor(s, goal_type) for s in preferred[:3]]
+    limiting_factors = [_build_reason_factor(s, goal_type) for s in restricted[:3]]
+    positive_reasons = [factor["short_text"] for factor in positive_factors]
+    limiting_reasons = [factor["short_text"] for factor in limiting_factors]
 
     parts = [f"Класс рекомендации: «{class_label}»."]
-    if positive_reasons:
-        parts.append("Сильные стороны продукта относительно аналогов: " + "; ".join(positive_reasons) + ".")
-    if limiting_reasons:
-        parts.append("Ограничивающие факторы: " + "; ".join(limiting_reasons) + ".")
+    if positive_factors:
+        parts.append("Оценку продукта в наибольшей степени повысили: " + "; ".join(f["short_text"] for f in positive_factors) + ".")
+    if limiting_factors:
+        parts.append("Оценку продукта в наибольшей степени снизили: " + "; ".join(f["short_text"] for f in limiting_factors) + ".")
     if category_rule:
         if category_rule["effect"] == "preferred":
             parts.append(
@@ -896,6 +954,8 @@ def _summary_from_signals(product: Any, signals: List[dict], class_label: str, c
     return {
         "positive_reasons": positive_reasons,
         "limiting_reasons": limiting_reasons,
+        "positive_factors": positive_factors,
+        "limiting_factors": limiting_factors,
         "text_explanation": " ".join(parts),
     }
 
@@ -1000,7 +1060,13 @@ def recommend(
         qua2 = metrics.get("qua2")
         qua3 = metrics.get("qua3")
         class_code, class_label, color = _classify(score_index_s, qua1, qua3)
-        summary = _summary_from_signals(product, signals, class_label, category_rule)
+        summary = _summary_from_signals(
+            product,
+            signals,
+            class_label,
+            category_rule,
+            getattr(goal, "goal_type", None),
+        )
 
         reasons = []
         if summary["positive_reasons"]:

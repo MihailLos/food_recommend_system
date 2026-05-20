@@ -192,7 +192,10 @@ function score100(item) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function summarizeReasons(reasons) {
+function summarizeReasons(factors, reasons) {
+  if (Array.isArray(factors) && factors.length > 0) {
+    return factors.slice(0, 2).map((item) => item?.short_text || item?.title).filter(Boolean).join("; ");
+  }
   if (!Array.isArray(reasons) || reasons.length === 0) return "не выделены";
   return reasons.slice(0, 2).join("; ");
 }
@@ -237,7 +240,18 @@ function ReasonList({ title, items, emptyText = "не выделены" }) {
       {Array.isArray(items) && items.length > 0 ? (
         <ul style={{ margin: "8px 0 0", paddingLeft: 18, color: "#444", lineHeight: 1.55 }}>
           {items.map((reason, index) => (
-            <li key={`${title}-${index}`}>{reason}</li>
+            <li key={`${title}-${index}`}>
+              {typeof reason === "string" ? (
+                reason
+              ) : (
+                <div style={{ display: "grid", gap: 4 }}>
+                  <div>{reason?.title || "—"}</div>
+                  {reason?.detail_text && (
+                    <div style={{ fontSize: 12, color: "#666" }}>{reason.detail_text}</div>
+                  )}
+                </div>
+              )}
+            </li>
           ))}
         </ul>
       ) : (
@@ -302,6 +316,8 @@ function DetailsModal({ item, onClose }) {
   const score = item.score_components || {};
   const positiveReasons = Array.isArray(explain?.summary?.positive_reasons) ? explain.summary.positive_reasons : [];
   const limitingReasons = Array.isArray(explain?.summary?.limiting_reasons) ? explain.summary.limiting_reasons : [];
+  const positiveFactors = Array.isArray(explain?.summary?.positive_factors) ? explain.summary.positive_factors : [];
+  const limitingFactors = Array.isArray(explain?.summary?.limiting_factors) ? explain.summary.limiting_factors : [];
   const classText = item.class_label || meta.title;
   const comparisonMode = explain?.comparison_mode || "subgroup";
   const categoryRule = explain?.category_rule;
@@ -334,7 +350,7 @@ function DetailsModal({ item, onClose }) {
             {comparisonMode === "global"
               ? `Продукт получил класс «${classText}» после сравнения со всей текущей отфильтрованной выборкой.`
               : `Продукт получил класс «${classText}» после сравнения с аналогами своей подгруппы.`}{" "}
-            Ниже показаны ключевые сильные стороны и ограничивающие факторы в раздельных списках.
+            Ниже показано, какие нутриенты сильнее всего повысили и снизили рекомендацию для выбранной цели питания.
           </div>
           {categoryRule && (
             <div style={{ color: "#444", lineHeight: 1.5 }}>
@@ -375,10 +391,14 @@ function DetailsModal({ item, onClose }) {
         </div>
 
         <div style={{ ...box, padding: 12, display: "grid", gap: 8 }}>
-          <div style={{ fontWeight: 700 }}>Ключевые причины рекомендации</div>
+          <div style={{ fontWeight: 700 }}>Какие факторы сильнее всего повлияли на рекомендацию</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-            <ReasonList title="Сильные стороны" items={positiveReasons} />
-            <ReasonList title="Ограничивающие факторы" items={limitingReasons} />
+            <ReasonList title="Что повысило оценку" items={positiveFactors.length ? positiveFactors : positiveReasons} />
+            <ReasonList title="Что снизило оценку" items={limitingFactors.length ? limitingFactors : limitingReasons} />
+          </div>
+          <div style={{ fontSize: 12, color: "#666", lineHeight: 1.5 }}>
+            Сила влияния определяется автоматически по месту нутриента среди аналогов. Сильное влияние: верхние 25% распределения;
+            умеренное: от 55% до 75%; слабое: ниже 55%.
           </div>
         </div>
 
@@ -925,11 +945,18 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                               {score100(item) == null ? "—" : `${score100(item).toFixed(1)} / 100`}
                             </div>
                             <div>
-                              <strong>Сильные стороны:</strong> {summarizeReasons(item?.explain?.summary?.positive_reasons)}
+                              <strong>Что повысило оценку:</strong>{" "}
+                              {summarizeReasons(
+                                item?.explain?.summary?.positive_factors,
+                                item?.explain?.summary?.positive_reasons,
+                              )}
                             </div>
                             <div>
-                              <strong>Ограничивающие факторы:</strong>{" "}
-                              {summarizeReasons(item?.explain?.summary?.limiting_reasons)}
+                              <strong>Что снизило оценку:</strong>{" "}
+                              {summarizeReasons(
+                                item?.explain?.summary?.limiting_factors,
+                                item?.explain?.summary?.limiting_reasons,
+                              )}
                             </div>
                           </div>
                           {!isGlobalMode && item.color !== "green" && item.color !== "blocked" && getAlternativeItems(item, enrichedItems).length > 0 && (
