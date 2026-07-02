@@ -147,29 +147,24 @@ def _load_guidance_lists(goal: Optional[ConsumerGoal]) -> Dict[str, list[str]]:
 
 def _find_macro_norm_row(profile: ConsumerProfile) -> MacronutrientsNormsMR:
     age = int(profile.age_years)
-
-    row = (
-        MacronutrientsNormsMR.objects
-        .filter(
-            sex=profile.sex,
-            work_group=profile.work_group,
-            age_min__lte=age,
-        )
-        .filter(age_max__isnull=True) | MacronutrientsNormsMR.objects.none()
-    )
-
-    # Надёжнее без union:
     qs = MacronutrientsNormsMR.objects.filter(
         sex=profile.sex,
         work_group=profile.work_group,
-        age_min__lte=age,
     ).order_by("age_min")
 
     matched = None
     for r in qs:
-        if r.age_max is None or age <= int(r.age_max):
+        age_max = None if r.age_max is None else int(r.age_max)
+        if age < int(r.age_min):
+            continue
+        if age_max is None or age <= age_max:
             matched = r
             break
+
+    if matched is None:
+        # Для возрастов старше верхней границы таблицы берём последнюю доступную строку
+        # той же группы труда и пола, чтобы расчёт не падал на пограничных профилях.
+        matched = qs.order_by("-age_min").first()
 
     if matched is None:
         raise ValueError(
