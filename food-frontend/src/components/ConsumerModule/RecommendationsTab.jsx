@@ -341,7 +341,6 @@ function DetailsModal({ item, onClose }) {
 
 export default function RecommendationsTab({ profileId, catalogScope }) {
   const [comparisonMode, setComparisonMode] = useState("");
-  const [searchText, setSearchText] = useState("");
   const [typeId, setTypeId] = useState("");
   const [subtypeId, setSubtypeId] = useState("");
   const [selectionTypeId, setSelectionTypeId] = useState("");
@@ -513,7 +512,6 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         profileId: profileIdNum,
         mode: "catalog",
         comparisonMode,
-        q: searchText,
         typeId: typeId || null,
         subtypeId: subtypeId || null,
         limit: 500,
@@ -532,7 +530,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     } finally {
       setLoading(false);
     }
-  }, [comparisonMode, ensureLocalCatalog, profileIdNum, searchText, selectedProducts, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
+  }, [comparisonMode, ensureLocalCatalog, profileIdNum, selectedProducts, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -827,15 +825,6 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
               </div>
             )}
 
-            <div style={{ display: "grid", gap: 6 }}>
-              <label>Поиск по названию</label>
-              <input
-                style={input}
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Например: кефир"
-              />
-            </div>
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -853,7 +842,6 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                 setSelectionSubtypeId("");
                 setSelectionSearch("");
                 setSelectedProducts([]);
-                setSearchText("");
                 setPayload(null);
                 setSelectedItem(null);
                 setError("");

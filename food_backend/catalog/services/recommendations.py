@@ -855,13 +855,23 @@ def recommend(
     server_product_map: Dict[int, FoodProducts] = {}
     if local_products:
         universe_products = [item for item in local_products if isinstance(item, dict)]
-        source_products = list(universe_products)
-        if q:
+        selected_ids = {
+            int(pid) for pid in (selected_product_ids or [])
+            if pid is not None
+        }
+        if comparison_mode == COMPARISON_MODE_SELECTED and selected_ids:
+            source_products = [
+                item for item in universe_products
+                if _product_id(item) in selected_ids
+            ]
+        else:
+            source_products = list(universe_products)
+        if q and comparison_mode != COMPARISON_MODE_SELECTED:
             search = q.strip().lower()
             source_products = [item for item in source_products if search in str(_product_get(item, "name") or "").lower()]
-        if subtype_id:
+        if subtype_id and comparison_mode != COMPARISON_MODE_SELECTED:
             source_products = [item for item in source_products if str(_product_get(item, "subtype_id", "subtypeId") or "") == str(subtype_id)]
-        elif type_id:
+        elif type_id and comparison_mode != COMPARISON_MODE_SELECTED:
             source_products = [item for item in source_products if str(_product_get(item, "type_id", "typeId") or "") == str(type_id)]
         products = source_products[:2000]
 
@@ -877,12 +887,19 @@ def recommend(
             )
             server_product_map = {product.id: product for product in server_products}
     else:
-        base_qs = FoodProducts.objects.all()
-        if q:
+        selected_ids = {
+            int(pid) for pid in (selected_product_ids or [])
+            if pid is not None
+        }
+        if comparison_mode == COMPARISON_MODE_SELECTED and selected_ids:
+            base_qs = FoodProducts.objects.filter(id__in=selected_ids)
+        else:
+            base_qs = FoodProducts.objects.all()
+        if q and comparison_mode != COMPARISON_MODE_SELECTED:
             base_qs = base_qs.filter(name__icontains=q.strip())
-        if subtype_id:
+        if subtype_id and comparison_mode != COMPARISON_MODE_SELECTED:
             base_qs = base_qs.filter(subtype_id=subtype_id)
-        elif type_id:
+        elif type_id and comparison_mode != COMPARISON_MODE_SELECTED:
             base_qs = base_qs.filter(subtype__product_type_id=type_id)
 
         products = list(
