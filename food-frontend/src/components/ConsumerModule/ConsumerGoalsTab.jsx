@@ -88,6 +88,10 @@ function normalizeList(data) {
   return [];
 }
 
+function sanitizeGuidanceCodes(codes) {
+  return (codes || []).filter((code) => !HIDDEN_NUTRIENT_CODES.has(code));
+}
+
 function formatUnit(unit) {
   if (!unit) return "—";
   if (unit === "g") return "граммы (г)";
@@ -152,7 +156,7 @@ function InfoText({ children }) {
   return <div style={{ fontSize: 13, color: "#555", lineHeight: 1.55 }}>{children}</div>;
 }
 
-function NutrientChips({ codes, nutrientMeta, onRemove, color, onDropCode, dragTarget, direction }) {
+function NutrientList({ codes, nutrientMeta, onRemove, color, onDropCode, dragTarget, direction }) {
   if (!codes.length) {
     return (
       <div
@@ -167,7 +171,7 @@ function NutrientChips({ codes, nutrientMeta, onRemove, color, onDropCode, dragT
           const code = event.dataTransfer.getData("text/plain");
           if (code) onDropCode(code);
         }}
-        style={{
+      style={{
           minHeight: 56,
           border: "1px dashed #d8d8d8",
           borderRadius: 10,
@@ -198,10 +202,7 @@ function NutrientChips({ codes, nutrientMeta, onRemove, color, onDropCode, dragT
         if (code) onDropCode(code);
       }}
       style={{
-        display: "flex",
-        flexWrap: "wrap",
-        alignItems: "flex-start",
-        alignContent: "flex-start",
+        display: "grid",
         gap: 8,
         minHeight: 56,
       }}
@@ -211,18 +212,18 @@ function NutrientChips({ codes, nutrientMeta, onRemove, color, onDropCode, dragT
           key={code}
           style={{
             display: "flex",
-            gap: 8,
             alignItems: "center",
-            padding: "6px 10px",
-            borderRadius: 999,
-            border: `1px solid ${color}`,
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: `1px solid ${color}33`,
             background: "#fff",
             fontSize: 13,
-            lineHeight: 1.2,
-            maxWidth: "100%",
+            lineHeight: 1.35,
           }}
         >
-          <span style={{ whiteSpace: "nowrap" }}>{nutrientMeta(code)?.ru_name || code}</span>
+          <span>{nutrientMeta(code)?.ru_name || code}</span>
           <button
             type="button"
             onClick={() => onRemove(code)}
@@ -295,6 +296,16 @@ export default function ConsumerGoalsTab({ profileId }) {
     return round2(Math.max(0, tdee + Number(energyDeltaKcal || 0)));
   }, [energyDeltaKcal, targets]);
 
+  const defaultCoverageCodes = useMemo(
+    () => sanitizeGuidanceCodes(targets?.guidance_meta?.default_coverage_codes || []),
+    [targets]
+  );
+
+  const defaultLimitCodes = useMemo(
+    () => sanitizeGuidanceCodes(targets?.guidance_meta?.default_limit_codes || []),
+    [targets]
+  );
+
   const loadData = useCallback(async () => {
     if (!profileIdNum) return;
     setLoading(true);
@@ -312,15 +323,15 @@ export default function ConsumerGoalsTab({ profileId }) {
       setEnergyDeltaKcal(Number(targetsData?.energy_delta_kcal || 0));
       setTargetValues(flattened);
       setBaseTargetValues(flattened);
-      setCoverageCodes(targetsData?.guidance_lists?.coverage_codes || []);
-      setLimitCodes(targetsData?.guidance_lists?.limit_codes || []);
+      setCoverageCodes(sanitizeGuidanceCodes(targetsData?.guidance_lists?.coverage_codes || []));
+      setLimitCodes(sanitizeGuidanceCodes(targetsData?.guidance_lists?.limit_codes || []));
       const nextOverrideCodes = new Set(overrides);
       setOverrideCodes(nextOverrideCodes);
       lastSavedSnapshotRef.current = buildSnapshot({
         energyDeltaKcal: Number(targetsData?.energy_delta_kcal || 0),
         targetValues: flattened,
-        coverageCodes: targetsData?.guidance_lists?.coverage_codes || [],
-        limitCodes: targetsData?.guidance_lists?.limit_codes || [],
+        coverageCodes: sanitizeGuidanceCodes(targetsData?.guidance_lists?.coverage_codes || []),
+        limitCodes: sanitizeGuidanceCodes(targetsData?.guidance_lists?.limit_codes || []),
         overrideCodes: nextOverrideCodes,
       });
       setSaveStatus("idle");
@@ -384,15 +395,15 @@ export default function ConsumerGoalsTab({ profileId }) {
       setTargetValues(flattened);
       setBaseTargetValues(flattened);
       setEnergyDeltaKcal(Number(updated?.energy_delta_kcal || 0));
-      setCoverageCodes(updated?.guidance_lists?.coverage_codes || []);
-      setLimitCodes(updated?.guidance_lists?.limit_codes || []);
+      setCoverageCodes(sanitizeGuidanceCodes(updated?.guidance_lists?.coverage_codes || []));
+      setLimitCodes(sanitizeGuidanceCodes(updated?.guidance_lists?.limit_codes || []));
       const nextOverrideCodes = new Set(Object.keys(updated?.manual_target_overrides || {}));
       setOverrideCodes(nextOverrideCodes);
       lastSavedSnapshotRef.current = buildSnapshot({
         energyDeltaKcal: Number(updated?.energy_delta_kcal || 0),
         targetValues: flattened,
-        coverageCodes: updated?.guidance_lists?.coverage_codes || [],
-        limitCodes: updated?.guidance_lists?.limit_codes || [],
+        coverageCodes: sanitizeGuidanceCodes(updated?.guidance_lists?.coverage_codes || []),
+        limitCodes: sanitizeGuidanceCodes(updated?.guidance_lists?.limit_codes || []),
         overrideCodes: nextOverrideCodes,
       });
       setSaveStatus("saved");
@@ -467,6 +478,19 @@ export default function ConsumerGoalsTab({ profileId }) {
 
   const removeLimitCode = (code) => {
     setLimitCodes((prev) => prev.filter((item) => item !== code));
+  };
+
+  const clearCoverageCodes = () => {
+    setCoverageCodes([]);
+  };
+
+  const clearLimitCodes = () => {
+    setLimitCodes([]);
+  };
+
+  const resetGuidanceListsToDefault = () => {
+    setCoverageCodes(defaultCoverageCodes);
+    setLimitCodes(defaultLimitCodes);
   };
 
   const renderedSections = useMemo(
@@ -644,8 +668,13 @@ export default function ConsumerGoalsTab({ profileId }) {
           }}
         >
           <div style={{ border: "1px solid #d8ead7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
-            <div style={{ fontWeight: 700, color: "#2e7d32" }}>Пищевые вещества покрытия</div>
-            <NutrientChips
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 700, color: "#2e7d32" }}>Пищевые вещества покрытия</div>
+              <button type="button" style={btn} onClick={clearCoverageCodes}>
+                Очистить все
+              </button>
+            </div>
+            <NutrientList
               codes={coverageCodes}
               nutrientMeta={nutrientMeta}
               onRemove={removeCoverageCode}
@@ -656,8 +685,13 @@ export default function ConsumerGoalsTab({ profileId }) {
             />
           </div>
           <div style={{ border: "1px solid #f1d7d7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
-            <div style={{ fontWeight: 700, color: "#c62828" }}>Пищевые вещества лимитной нагрузки</div>
-            <NutrientChips
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 700, color: "#c62828" }}>Пищевые вещества лимитной нагрузки</div>
+              <button type="button" style={btn} onClick={clearLimitCodes}>
+                Очистить все
+              </button>
+            </div>
+            <NutrientList
               codes={limitCodes}
               nutrientMeta={nutrientMeta}
               onRemove={removeLimitCode}
@@ -680,7 +714,12 @@ export default function ConsumerGoalsTab({ profileId }) {
             }}
           >
             <div style={{ fontWeight: 700 }}>Доступные пищевые вещества</div>
-            <InfoText>Перетащи вещество в один из списков слева.</InfoText>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <InfoText>Перетащи вещество в один из списков слева.</InfoText>
+              <button type="button" style={btn} onClick={resetGuidanceListsToDefault}>
+                Вернуть вещества по умолчанию
+              </button>
+            </div>
             {unassignedNutrients.length === 0 ? (
               <div style={{ fontSize: 12, color: "#666" }}>Все доступные вещества уже распределены по спискам.</div>
             ) : (

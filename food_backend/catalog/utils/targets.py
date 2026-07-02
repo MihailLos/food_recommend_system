@@ -378,6 +378,8 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
         "title": goal.title or DEFAULT_GUIDANCE_TITLE,
         "goal_id": goal.id,
         "auto_save": True,
+        "default_coverage_codes": list(DEFAULT_COVERAGE_CODES),
+        "default_limit_codes": list(DEFAULT_LIMIT_CODES),
     }
 
     return payload
