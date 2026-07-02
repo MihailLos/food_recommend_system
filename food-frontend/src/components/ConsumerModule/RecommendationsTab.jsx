@@ -480,6 +480,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const [selectedItem, setSelectedItem] = useState(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingDetail, setLoadingDetail] = useState("");
+  const [isCompactLayout, setIsCompactLayout] = useState(false);
   const loadingTimerRef = useRef(null);
 
   const profileIdNum = useMemo(() => {
@@ -515,6 +516,16 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     setCatalogProducts(normalizedItems);
     return normalizedItems;
   }, [catalogScope]);
+
+  useEffect(() => {
+    const syncLayout = () => {
+      if (typeof window === "undefined") return;
+      setIsCompactLayout(window.innerWidth < 980);
+    };
+    syncLayout();
+    window.addEventListener("resize", syncLayout);
+    return () => window.removeEventListener("resize", syncLayout);
+  }, []);
 
   useEffect(() => {
     ensureLocalCatalog().catch(() => {});
@@ -690,7 +701,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   };
 
   const sortLabel = (field, label) => {
-    if (sortBy !== field) return label;
+    if (sortBy !== field) return `${label} ↕`;
     return `${label} ${sortDirection === "asc" ? "↑" : "↓"}`;
   };
 
@@ -843,10 +854,17 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
             )}
 
             {comparisonMode === "selected" && (
-              <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(320px, 0.8fr)", gap: 12 }}>
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  display: "grid",
+                  gridTemplateColumns: isCompactLayout ? "1fr" : "minmax(0, 1.2fr) minmax(320px, 0.8fr)",
+                  gap: 12,
+                }}
+              >
                 <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, display: "grid", gap: 10 }}>
                   <div style={{ fontWeight: 700 }}>Добавить продукты в множество сравнения</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isCompactLayout ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 8 }}>
                     <select
                       style={input}
                       value={selectionTypeId}
@@ -979,7 +997,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         {error && <div style={{ color: "crimson" }}>{error}</div>}
       </div>
 
-      {payload && (
+        {payload && (
         <div style={{ ...box, padding: 16, display: "grid", gap: 12 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
             <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
@@ -1000,6 +1018,29 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
             </div>
           </div>
 
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "#f7f9fc",
+              border: "1px solid #e3e8ef",
+              fontSize: 13,
+              color: "#556",
+            }}
+          >
+            <span>Нажмите на заголовок столбца со стрелкой, чтобы отсортировать таблицу.</span>
+            <span style={{ fontWeight: 700, color: "#1f3b67" }}>
+              {sortBy === "coverage_percent_100" && "Сейчас сортировка: покрытие"}
+              {sortBy === "limit_percent_100" && "Сейчас сортировка: лимитная нагрузка"}
+              {sortBy === "score_percent_100" && "Сейчас сортировка: итоговая оценка"}
+            </span>
+          </div>
+
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
@@ -1007,20 +1048,62 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                   <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>Продукт</th>
                   {hasCoverageDimension && (
                     <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
-                      <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("coverage_percent_100")}>
+                      <button
+                        type="button"
+                        style={{
+                          ...btn,
+                          padding: "0 0 2px",
+                          border: "none",
+                          background: "transparent",
+                          fontWeight: 700,
+                          color: sortBy === "coverage_percent_100" ? "#1f3b67" : "#222",
+                          borderBottom: "1px dashed #9fb2c9",
+                          borderRadius: 0,
+                        }}
+                        onClick={() => toggleSort("coverage_percent_100")}
+                        title="Нажмите, чтобы отсортировать по уровню покрытия"
+                      >
                         {sortLabel("coverage_percent_100", "Уровень покрытия")}
                       </button>
                     </th>
                   )}
                   {hasLimitDimension && (
                     <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
-                      <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("limit_percent_100")}>
+                      <button
+                        type="button"
+                        style={{
+                          ...btn,
+                          padding: "0 0 2px",
+                          border: "none",
+                          background: "transparent",
+                          fontWeight: 700,
+                          color: sortBy === "limit_percent_100" ? "#1f3b67" : "#222",
+                          borderBottom: "1px dashed #9fb2c9",
+                          borderRadius: 0,
+                        }}
+                        onClick={() => toggleSort("limit_percent_100")}
+                        title="Нажмите, чтобы отсортировать по уровню лимитной нагрузки"
+                      >
                         {sortLabel("limit_percent_100", "Уровень лимитной нагрузки")}
                       </button>
                     </th>
                   )}
                   <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
-                    <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("score_percent_100")}>
+                    <button
+                      type="button"
+                      style={{
+                        ...btn,
+                        padding: "0 0 2px",
+                        border: "none",
+                        background: "transparent",
+                        fontWeight: 700,
+                        color: sortBy === "score_percent_100" ? "#1f3b67" : "#222",
+                        borderBottom: "1px dashed #9fb2c9",
+                        borderRadius: 0,
+                      }}
+                      onClick={() => toggleSort("score_percent_100")}
+                      title="Нажмите, чтобы отсортировать по итоговой оценке"
+                    >
                       {sortLabel("score_percent_100", "Итоговая оценка приоритетности")}
                     </button>
                   </th>

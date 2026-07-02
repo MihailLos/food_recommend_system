@@ -259,6 +259,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [limitCodes, setLimitCodes] = useState([]);
   const [overrideCodes, setOverrideCodes] = useState(new Set());
   const [dragTarget, setDragTarget] = useState("");
+  const [isCompactLayout, setIsCompactLayout] = useState(false);
   const bootstrappedRef = useRef(false);
   const saveTimerRef = useRef(null);
   const lastSavedSnapshotRef = useRef("");
@@ -342,6 +343,16 @@ export default function ConsumerGoalsTab({ profileId }) {
       setLoading(false);
     }
   }, [profileIdNum]);
+
+  useEffect(() => {
+    const syncLayout = () => {
+      if (typeof window === "undefined") return;
+      setIsCompactLayout(window.innerWidth < 980);
+    };
+    syncLayout();
+    window.addEventListener("resize", syncLayout);
+    return () => window.removeEventListener("resize", syncLayout);
+  }, []);
 
   useEffect(() => {
     bootstrappedRef.current = false;
@@ -662,12 +673,12 @@ export default function ConsumerGoalsTab({ profileId }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(320px, 0.9fr)",
+            gridTemplateColumns: isCompactLayout ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr) minmax(320px, 0.9fr)",
             gap: 12,
             alignItems: "start",
           }}
         >
-          <div style={{ border: "1px solid #d8ead7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
+          <div style={{ border: "1px solid #d8ead7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start", order: isCompactLayout ? 2 : 1 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <div style={{ fontWeight: 700, color: "#2e7d32" }}>Пищевые вещества покрытия</div>
               <button type="button" style={btn} onClick={clearCoverageCodes}>
@@ -684,7 +695,7 @@ export default function ConsumerGoalsTab({ profileId }) {
               direction="coverage"
             />
           </div>
-          <div style={{ border: "1px solid #f1d7d7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
+          <div style={{ border: "1px solid #f1d7d7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start", order: isCompactLayout ? 3 : 2 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <div style={{ fontWeight: 700, color: "#c62828" }}>Пищевые вещества лимитной нагрузки</div>
               <button type="button" style={btn} onClick={clearLimitCodes}>
@@ -711,15 +722,40 @@ export default function ConsumerGoalsTab({ profileId }) {
               alignContent: "start",
               maxHeight: 520,
               overflow: "auto",
+              order: isCompactLayout ? 1 : 3,
             }}
           >
             <div style={{ fontWeight: 700 }}>Доступные пищевые вещества</div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <InfoText>Перетащи вещество в один из списков слева.</InfoText>
+              <InfoText>
+                {isCompactLayout
+                  ? "Сначала прокрутите этот список и выберите нужные вещества, затем перетащите их в списки ниже."
+                  : "Прокрутите этот список вниз и перетащите вещество в один из списков слева."}
+              </InfoText>
               <button type="button" style={btn} onClick={resetGuidanceListsToDefault}>
                 Вернуть вещества по умолчанию
               </button>
             </div>
+            {unassignedNutrients.length > 5 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  background: "#f6f8fb",
+                  border: "1px solid #d9e1ea",
+                  fontSize: 12,
+                  color: "#445",
+                  fontWeight: 600,
+                }}
+              >
+                <span>Список ниже прокручивается</span>
+                <span aria-hidden="true">↓</span>
+              </div>
+            )}
             {unassignedNutrients.length === 0 ? (
               <div style={{ fontSize: 12, color: "#666" }}>Все доступные вещества уже распределены по спискам.</div>
             ) : (
