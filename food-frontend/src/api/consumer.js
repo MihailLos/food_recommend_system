@@ -69,6 +69,10 @@ export async function fetchProfileTargets(profileId) {
   return client.get(`/api/consumer/profiles/${profileId}/targets/`).then(r => r.data);
 }
 
+export async function updateProfileTargets(profileId, payload) {
+  return client.put(`/api/consumer/profiles/${profileId}/targets/`, payload).then(r => r.data);
+}
+
 // preferences (если будете редактировать отдельно)
 export async function fetchGoalPreferences(goalId) {
   return client.get(`/api/consumer/goals/${goalId}/preferences/`).then(r => r.data);
@@ -97,13 +101,14 @@ export async function fetchFoodProductSubtypes() {
 export async function fetchRecommendations({
   profileId,
   mode = "catalog",
-  comparisonMode = "subgroup",
+  comparisonMode = "",
   cartId = null,
   limit = 50,
   q = "",
   typeId = null,
   subtypeId = null,
   localProducts = null,
+  selectedProductIds = null,
 }) {
   const pid = Number(profileId);
   if (!Number.isFinite(pid) || pid <= 0) {
@@ -113,7 +118,7 @@ export async function fetchRecommendations({
   const payload = {
     profile: pid,
     mode: String(mode),
-    comparison_mode: String(comparisonMode || "subgroup"),
+    comparison_mode: String(comparisonMode || ""),
     limit,
   };
 
@@ -136,6 +141,10 @@ export async function fetchRecommendations({
 
   if (Array.isArray(localProducts) && localProducts.length > 0) {
     payload.local_products = localProducts;
+  }
+
+  if (Array.isArray(selectedProductIds) && selectedProductIds.length > 0) {
+    payload.selected_product_ids = selectedProductIds;
   }
 
   return client.post(`/api/consumer/recommendations/`, payload, { timeout: 90000 }).then((r) => r.data);

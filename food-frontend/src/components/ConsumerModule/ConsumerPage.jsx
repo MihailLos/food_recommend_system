@@ -40,7 +40,7 @@ export default function ConsumerPage({ catalogScope }) {
           disabled={!selectedProfileId}
           title={!selectedProfileId ? "Сначала выберите профиль" : ""}
         >
-          Цели питания
+          Пищевые ориентиры
         </button>
         <button
           type="button"

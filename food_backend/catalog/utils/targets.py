@@ -6,6 +6,8 @@ from catalog.models import (
     FatAcidsNormsMR,
     MacronutrientsNormsMR,
     MineralsNormsMR,
+    GoalNutrientPreference,
+    GoalNutrientTarget,
     OtherNutrientsNormsMR,
     VitaminsNormsMR,
 )
@@ -14,6 +16,133 @@ from catalog.utils.energy_calc import calculate_tdee_for_profile
 ADULT_SODIUM_NORM_MG_DAY = 1300.0
 ADULT_CHOLESTEROL_NORM_MG_DAY = 300.0
 DEFAULT_WATER_G_DAY = 2000.0
+DEFAULT_GUIDANCE_TITLE = "Пищевые ориентиры"
+
+DEFAULT_COVERAGE_CODES = [
+    "protein_g",
+    "dietary_fiber_g",
+    "ca_mg",
+    "k_mg",
+    "mg_mg",
+    "p_mg",
+    "fe_mg",
+    "a_mg",
+    "b1_mg",
+    "b2_mg",
+    "pp_mg",
+    "c_mg",
+    "beta_carotene_mg",
+    "tocopherol_index",
+    "niacin_index",
+    "retinol_index",
+    "pufa_g",
+]
+
+DEFAULT_LIMIT_CODES = [
+    "na_mg",
+    "nlc_g",
+    "mds_g",
+    "cholesterol_g",
+    "alcohol_pct",
+]
+
+TARGET_FIELD_ALIASES = {
+    "energy_kcal": ("target_energy_kcal_day",),
+    "protein_g": ("target_macros_g_day", "protein_g"),
+    "fats_g": ("target_macros_g_day", "fat_g"),
+    "carbs_g": ("target_macros_g_day", "carb_g"),
+    "dietary_fiber_g": ("target_fiber_g_day", "min"),
+    "water_g": ("target_water_g_day", "min"),
+    "mds_g": ("target_mds_g_day", "min"),
+    "organic_acids_g": ("target_other_nutrients_day", "organic_acids_g"),
+    "nlc_g": ("target_fat_acids_day", "nlc_g"),
+    "pufa_g": ("target_fat_acids_day", "pufa_g"),
+    "cholesterol_g": ("target_cholesterol_mg_day",),
+    "a_mg": ("target_vitamins_day", "A_Vitamin (mg)"),
+    "beta_carotene_mg": ("target_vitamins_day", "Beta_Carotene (mg)"),
+    "b1_mg": ("target_vitamins_day", "B1_Vitamin (mg)"),
+    "b2_mg": ("target_vitamins_day", "B2_Vitamin (mg)"),
+    "pp_mg": ("target_vitamins_day", "PP_Vitamin (mg)"),
+    "c_mg": ("target_vitamins_day", "C_Vitamin (mg)"),
+    "retinol_index": ("target_vitamins_day", "Retinol_Index"),
+    "tocopherol_index": ("target_vitamins_day", "Tocopherol_Index"),
+    "niacin_index": ("target_vitamins_day", "Niacin_Index"),
+    "na_mg": ("target_minerals_day", "na_mg"),
+    "k_mg": ("target_minerals_day", "K (mg)"),
+    "ca_mg": ("target_minerals_day", "Ca (mg)"),
+    "mg_mg": ("target_minerals_day", "Mg (mg)"),
+    "p_mg": ("target_minerals_day", "P (mg)"),
+    "fe_mg": ("target_minerals_day", "Fe (mg)"),
+    "alcohol_pct": ("target_limit_only_day", "alcohol_pct"),
+}
+
+
+def ensure_active_goal(profile: ConsumerProfile) -> ConsumerGoal:
+    goal = (
+        ConsumerGoal.objects.filter(profile_id=profile.id, is_active=True)
+        .order_by("-id")
+        .first()
+    )
+    if goal is not None:
+        return goal
+
+    goal = ConsumerGoal.objects.create(
+        profile=profile,
+        title=DEFAULT_GUIDANCE_TITLE,
+        goal_type=ConsumerGoal.GOAL_MAINTAIN,
+        energy_delta_kcal=0,
+        preferences_replace_base=False,
+        is_active=True,
+    )
+    return goal
+
+
+def _set_payload_value(payload: Dict, path: tuple[str, ...], value: float) -> None:
+    if len(path) == 1:
+        payload[path[0]] = round(float(value), 2)
+        return
+
+    container = payload.setdefault(path[0], {})
+    container[path[1]] = round(float(value), 2)
+
+
+def _apply_target_overrides(payload: Dict, goal: Optional[ConsumerGoal]) -> Dict[str, float]:
+    if goal is None:
+        return {}
+
+    overrides = {
+        row.nutrient_code_id: float(row.target_value)
+        for row in GoalNutrientTarget.objects.filter(goal_id=goal.id)
+    }
+
+    for code, value in overrides.items():
+        path = TARGET_FIELD_ALIASES.get(code)
+        if path:
+            _set_payload_value(payload, path, value)
+
+    return overrides
+
+
+def _load_guidance_lists(goal: Optional[ConsumerGoal]) -> Dict[str, list[str]]:
+    if goal is None:
+        return {
+            "coverage_codes": list(DEFAULT_COVERAGE_CODES),
+            "limit_codes": list(DEFAULT_LIMIT_CODES),
+        }
+
+    rows = list(GoalNutrientPreference.objects.filter(goal_id=goal.id).order_by("id"))
+    if not rows or not goal.preferences_replace_base:
+        return {
+            "coverage_codes": list(DEFAULT_COVERAGE_CODES),
+            "limit_codes": list(DEFAULT_LIMIT_CODES),
+        }
+
+    coverage_codes = [row.nutrient_code_id for row in rows if row.direction == "more"]
+    limit_codes = [row.nutrient_code_id for row in rows if row.direction == "less"]
+    return {
+        "coverage_codes": coverage_codes,
+        "limit_codes": limit_codes,
+    }
 
 
 def _find_macro_norm_row(profile: ConsumerProfile) -> MacronutrientsNormsMR:
@@ -89,11 +218,7 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
     res = calculate_tdee_for_profile(profile)
     tdee_kcal_day = float(res.tdee_kcal_day)
 
-    goal = (
-        ConsumerGoal.objects.filter(profile_id=profile.id, is_active=True)
-        .order_by("-id")
-        .first()
-    )
+    goal = ensure_active_goal(profile)
 
     macro_row = _find_macro_norm_row(profile)
 
@@ -250,5 +375,14 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
     if goal and goal.goal_type == "lose_weight":
         recommended = {"min": -700, "max": -500}
     payload["recommended_energy_delta_kcal"] = recommended
+
+    overrides = _apply_target_overrides(payload, goal)
+    payload["guidance_lists"] = _load_guidance_lists(goal)
+    payload["manual_target_overrides"] = overrides
+    payload["guidance_meta"] = {
+        "title": goal.title or DEFAULT_GUIDANCE_TITLE,
+        "goal_id": goal.id,
+        "auto_save": True,
+    }
 
     return payload

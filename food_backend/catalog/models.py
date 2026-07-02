@@ -565,6 +565,34 @@ class GoalNutrientPreference(models.Model):
     def __str__(self) -> str:
         return f"{self.goal_id}: {self.nutrient_code} -> {self.direction}"
 
+
+class GoalNutrientTarget(models.Model):
+    id = models.AutoField(primary_key=True)
+
+    goal = models.ForeignKey(
+        ConsumerGoal,
+        on_delete=models.CASCADE,
+        db_column="goal_id",
+        related_name="nutrient_targets",
+    )
+
+    nutrient_code = models.ForeignKey(
+        NutrientDictionary,
+        to_field="code",
+        on_delete=models.CASCADE,
+        db_column="nutrient_code",
+        related_name="nutrient_targets",
+    )
+
+    target_value = models.FloatField(db_column="target_value")
+
+    class Meta:
+        managed = False
+        db_table = "Goal_Nutrient_Targets"
+
+    def __str__(self) -> str:
+        return f"{self.goal_id}: {self.nutrient_code} = {self.target_value}"
+
 class NutrientStats(models.Model):
     nutrient_code = models.TextField(primary_key=True, db_column="nutrient_code")
     unit = models.TextField(null=True, blank=True, db_column="unit")

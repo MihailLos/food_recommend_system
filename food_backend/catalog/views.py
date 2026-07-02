@@ -11,20 +11,20 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 
 from .models import (FoodProductTypes, FoodProducts, Macronutrients, Minerals,
                      Vitamins, OtherNutrients, FatAcids, CulinaryProcessingType, Allergen, AllergenProduct, NotChildProduct,
-                     ConsumerProfile, WorkActivityGroup, ProfileAllergen, ConsumerGoal, GoalNutrientPreference,
+                     ConsumerProfile, WorkActivityGroup, ProfileAllergen, ConsumerGoal, GoalNutrientPreference, GoalNutrientTarget,
                      NutrientDictionary, FoodProductSubtypes)
 from .serializers import (FoodProductTypeSerializer, FoodProductSerializer,
                           MacronutrientsSerializer, MineralsSerializer,
                           VitaminsSerializer, OtherNutrientsSerializer,
                           FatAcidsSerializer, AllergenSerializer, 
                           ConsumerProfileSerializer, WorkActivityGroupSerializer,
-                          ConsumerGoalSerializer, GoalNutrientPreferenceSerializer, NutrientDictionarySerializer,
+                          ConsumerGoalSerializer, GoalNutrientPreferenceSerializer, GoalNutrientTargetSerializer, NutrientDictionarySerializer,
                           RegisterSerializer, LoginSerializer, CurrentUserSerializer,
                           FoodProductSubtypeSerializer)
 from .services.processing_calc import compute_processed_nutrients
 from .services.processing_calc import pick_processing_rule
 from catalog.utils.energy_calc import calculate_bmi, calculate_tdee_for_profile
-from catalog.utils.targets import compute_targets_for_profile
+from catalog.utils.targets import compute_targets_for_profile, ensure_active_goal
 
 import hashlib, json
 
@@ -537,6 +537,82 @@ class ProfileTargetsView(APIView):
 
     def get(self, request, profile_id):
         profile = get_object_or_404(ConsumerProfile, pk=profile_id, user=request.user)
+        return Response(compute_targets_for_profile(profile))
+
+    def put(self, request, profile_id):
+        profile = get_object_or_404(ConsumerProfile, pk=profile_id, user=request.user)
+        goal = ensure_active_goal(profile)
+
+        energy_delta_kcal = request.data.get("energy_delta_kcal", 0)
+        macros = request.data.get("macros_pct") or {}
+        guidance_lists = request.data.get("guidance_lists") or {}
+        nutrient_targets = request.data.get("nutrient_targets") or []
+
+        coverage_codes = guidance_lists.get("coverage_codes") or []
+        limit_codes = guidance_lists.get("limit_codes") or []
+
+        pref_payload = (
+            [{"nutrient_code": code, "direction": "more"} for code in coverage_codes]
+            + [{"nutrient_code": code, "direction": "less"} for code in limit_codes]
+        )
+        pref_serializer = GoalNutrientPreferenceSerializer(data=pref_payload, many=True)
+        pref_serializer.is_valid(raise_exception=True)
+
+        target_serializer = GoalNutrientTargetSerializer(data=nutrient_targets, many=True)
+        target_serializer.is_valid(raise_exception=True)
+
+        macro_fields = {
+            "protein_pct": macros.get("protein_pct"),
+            "fat_pct": macros.get("fat_pct"),
+            "carb_pct": macros.get("carb_pct"),
+        }
+        has_manual_macros = any(value not in (None, "") for value in macro_fields.values())
+        if not has_manual_macros:
+            macro_fields = {
+                "protein_pct": None,
+                "fat_pct": None,
+                "carb_pct": None,
+            }
+
+        goal_payload = {
+            "title": request.data.get("title") or goal.title or "Пищевые ориентиры",
+            "goal_type": ConsumerGoal.GOAL_MAINTAIN,
+            "energy_delta_kcal": energy_delta_kcal if energy_delta_kcal not in ("", None) else 0,
+            "preferences_replace_base": True,
+            "is_active": True,
+            **macro_fields,
+        }
+        goal_serializer = ConsumerGoalSerializer(goal, data=goal_payload, partial=True)
+        goal_serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            goal = goal_serializer.save()
+
+            GoalNutrientPreference.objects.filter(goal_id=goal.id).delete()
+            pref_rows = [
+                GoalNutrientPreference(
+                    goal=goal,
+                    nutrient_code=item["nutrient_code"],
+                    direction=item["direction"],
+                    priority=item.get("priority") or 2,
+                )
+                for item in pref_serializer.validated_data
+            ]
+            if pref_rows:
+                GoalNutrientPreference.objects.bulk_create(pref_rows)
+
+            GoalNutrientTarget.objects.filter(goal_id=goal.id).delete()
+            target_rows = [
+                GoalNutrientTarget(
+                    goal=goal,
+                    nutrient_code=item["nutrient_code"],
+                    target_value=item["target_value"],
+                )
+                for item in target_serializer.validated_data
+            ]
+            if target_rows:
+                GoalNutrientTarget.objects.bulk_create(target_rows)
+
         return Response(compute_targets_for_profile(profile))
 
 class NutrientDictionaryViewSet(viewsets.ReadOnlyModelViewSet):

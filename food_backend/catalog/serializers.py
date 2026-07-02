@@ -4,7 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from decimal import Decimal
 from .models import (FoodProductTypes, FoodProducts, Macronutrients, Minerals,
                      Vitamins, OtherNutrients, FatAcids, FoodProductSubtypes, Allergen, ConsumerProfile, WorkActivityGroup,
-                     ProfileAllergen, ConsumerGoal, GoalNutrientPreference, NutrientDictionary)
+                     ProfileAllergen, ConsumerGoal, GoalNutrientPreference, GoalNutrientTarget, NutrientDictionary)
 from catalog.utils.allergens import get_allergens_for_product
 from catalog.utils.child_rules import pick_not_child_rule
 from catalog.utils.energy_calc import calculate_bmi, calculate_tdee_for_profile
@@ -444,6 +444,43 @@ class GoalNutrientPreferenceSerializer(serializers.ModelSerializer):
             return 2
         if int(value) < 1 or int(value) > 3:
             raise serializers.ValidationError("priority must be in range 1..3.")
+        return value
+
+
+class GoalNutrientTargetListSerializer(serializers.ListSerializer):
+    def validate(self, data):
+        codes = []
+        for item in data:
+            code = item.get("nutrient_code")
+            if isinstance(code, str):
+                code = code.strip()
+            elif code is not None:
+                code = getattr(code, "code", None)
+            if not code:
+                raise serializers.ValidationError({"nutrient_code": "nutrient_code is required"})
+            codes.append(code)
+
+        if len(set(codes)) != len(codes):
+            dupes = sorted({c for c in codes if codes.count(c) > 1})
+            raise serializers.ValidationError({"nutrient_code": f"Duplicate codes: {dupes}"})
+        return data
+
+
+class GoalNutrientTargetSerializer(serializers.ModelSerializer):
+    nutrient_code = serializers.SlugRelatedField(
+        slug_field="code",
+        queryset=NutrientDictionary.objects.filter(is_active=True),
+    )
+
+    class Meta:
+        model = GoalNutrientTarget
+        fields = ["id", "nutrient_code", "target_value"]
+        list_serializer_class = GoalNutrientTargetListSerializer
+
+    def validate_target_value(self, value):
+        value = float(value)
+        if value < 0:
+            raise serializers.ValidationError("target_value must be >= 0.")
         return value
 
 class ConsumerGoalSerializer(serializers.ModelSerializer):

@@ -12,7 +12,12 @@ from catalog.models import (
 )
 from catalog.utils.allergens import get_allergens_for_product
 from catalog.utils.child_rules import pick_not_child_rule
-from catalog.utils.targets import compute_targets_for_profile
+from catalog.utils.targets import (
+    DEFAULT_COVERAGE_CODES,
+    DEFAULT_LIMIT_CODES,
+    compute_targets_for_profile,
+    ensure_active_goal,
+)
 
 ADULT_SODIUM_NORM_MG_DAY = 1300.0
 ADULT_CHOLESTEROL_NORM_MG_DAY = 300.0
@@ -26,31 +31,6 @@ GROUP_ALIASES = {
 TECHNICAL_NUTRIENT_CODES = {
     "starch_g",
     "ash_g",
-    "alcohol_pct",
-}
-
-BASE_PREFERRED_CODES = {
-    "protein_g",
-    "dietary_fiber_g",
-    "pufa_g",
-    "a_mg",
-    "beta_carotene_mg",
-    "b1_mg",
-    "b2_mg",
-    "c_mg",
-    "niacin_index",
-    "ca_mg",
-    "fe_mg",
-    "k_mg",
-    "mg_mg",
-    "p_mg",
-}
-
-BASE_RESTRICTED_CODES = {
-    "nlc_g",
-    "mds_g",
-    "na_mg",
-    "cholesterol_g",
 }
 
 COMPARISON_MODE_SUBGROUP = "subgroup"
@@ -64,162 +44,11 @@ COMPARISON_MODE_CHOICES = {
     COMPARISON_MODE_SELECTED,
 }
 
-CATEGORY_RULE_SCOPE_WEIGHT = {
-    "type": 1.0,
-    "subtype": 2.0,
-}
-
-GOAL_NUTRIENT_PROFILES = {
-    ConsumerGoal.GOAL_LOSE_WEIGHT: {
-        "preferred": {
-            "protein_g",
-            "dietary_fiber_g",
-            "pufa_g",
-            "a_mg",
-            "beta_carotene_mg",
-            "b1_mg",
-            "b2_mg",
-            "c_mg",
-            "niacin_index",
-            "ca_mg",
-            "fe_mg",
-            "k_mg",
-            "mg_mg",
-            "p_mg",
-        },
-        "restricted": {
-            "energy_kcal",
-            "nlc_g",
-            "cholesterol_g",
-            "na_mg",
-        },
-    },
-    ConsumerGoal.GOAL_MAINTAIN: {
-        "preferred": {
-            "protein_g",
-            "fats_g",
-            "carbs_g",
-            "dietary_fiber_g",
-            "a_mg",
-            "beta_carotene_mg",
-            "b1_mg",
-            "b2_mg",
-            "c_mg",
-            "niacin_index",
-            "ca_mg",
-            "fe_mg",
-            "k_mg",
-            "mg_mg",
-            "p_mg",
-        },
-        "restricted": {
-            "nlc_g",
-            "mds_g",
-            "na_mg",
-        },
-    },
-    ConsumerGoal.GOAL_GAIN_MUSCLE: {
-        "preferred": {
-            "energy_kcal",
-            "protein_g",
-            "fats_g",
-            "carbs_g",
-            "mg_mg",
-            "fe_mg",
-            "ca_mg",
-            "water_g",
-        },
-        "restricted": {
-            "nlc_g",
-            "mds_g",
-        },
-    },
-}
-
-GOAL_CATEGORY_RULES = {
-    ConsumerGoal.GOAL_LOSE_WEIGHT: {
-        "preferred_subtypes": (
-            "овощ",
-            "фрукт",
-            "говядина 1",
-            "свинина бекон",
-            "свинина мясн",
-            "баранина 1",
-            "птиц",
-            "рыб",
-        ),
-        "preferred_types": (
-            "овощ",
-            "фрукт",
-            "рыб",
-            "птиц",
-        ),
-        "restricted_subtypes": (
-            "конфет",
-            "шоколад",
-            "кондитер",
-            "морожен",
-            "сладк",
-            "лимонад",
-            "газирован",
-            "выпечк",
-        ),
-        "restricted_types": (
-            "кондитер",
-            "морожен",
-            "выпечк",
-        ),
-    },
-    ConsumerGoal.GOAL_MAINTAIN: {
-        "preferred_subtypes": (
-            "овощ",
-            "фрукт",
-        ),
-        "preferred_types": (
-            "овощ",
-            "фрукт",
-        ),
-        "restricted_subtypes": (
-            "конфет",
-            "шоколад",
-            "кондитер",
-            "морожен",
-            "сладк",
-            "лимонад",
-            "газирован",
-            "выпечк",
-        ),
-        "restricted_types": (
-            "кондитер",
-            "морожен",
-            "выпечк",
-        ),
-    },
-    ConsumerGoal.GOAL_GAIN_MUSCLE: {
-        "preferred_subtypes": (),
-        "preferred_types": (),
-        "restricted_subtypes": (),
-        "restricted_types": (),
-    },
-}
-
 CLASS_META = {
     "best_fit": {"label": "Наиболее подходит", "color": "green", "rank": 3},
     "limited_fit": {"label": "Подходит с ограничениями", "color": "yellow", "rank": 2},
     "not_recommended": {"label": "Не рекомендуется", "color": "red", "rank": 1},
     "excluded": {"label": "Исключено", "color": "blocked", "rank": 0},
-}
-
-GOAL_EXPLAIN_META = {
-    ConsumerGoal.GOAL_LOSE_WEIGHT: {
-        "title": "снижения массы тела",
-    },
-    ConsumerGoal.GOAL_MAINTAIN: {
-        "title": "поддержания массы тела",
-    },
-    ConsumerGoal.GOAL_GAIN_MUSCLE: {
-        "title": "увеличения энергетической обеспеченности",
-    },
 }
 
 VITAMIN_TARGET_NAMES = {
@@ -441,8 +270,8 @@ def _matches_rule_name(name: Any, phrase: str) -> bool:
     return True
 
 
-def _goal_context_title(goal_type: Optional[str]) -> str:
-    return (GOAL_EXPLAIN_META.get(goal_type) or {}).get("title") or "выбранной цели"
+def _goal_context_title(_goal_type: Optional[str]) -> str:
+    return "текущих пищевых ориентиров"
 
 
 def _build_default_roles(
@@ -450,9 +279,10 @@ def _build_default_roles(
     nutrient_map: Dict[str, NutrientDictionary],
 ) -> Dict[str, str]:
     roles: Dict[str, str] = {}
-    profile = GOAL_NUTRIENT_PROFILES.get(goal_type) or {
-        "preferred": BASE_PREFERRED_CODES,
-        "restricted": BASE_RESTRICTED_CODES,
+    del goal_type
+    profile = {
+        "preferred": DEFAULT_COVERAGE_CODES,
+        "restricted": DEFAULT_LIMIT_CODES,
     }
 
     for code in profile["preferred"]:
@@ -524,61 +354,16 @@ def _fetch_comparison_pools(
 
 
 def _match_goal_category_rule(goal_type: Optional[str], product: Any) -> Optional[dict]:
-    rules = GOAL_CATEGORY_RULES.get(goal_type)
-    if not rules:
-        return None
-
-    subtype_name = _normalize_text(_product_get(product, "subtype_name", "subtypeName"))
-    type_name = _normalize_text(_product_get(product, "type_name", "typeName"))
-    if not type_name and not _is_mapping(product):
-        type_name = _normalize_text(getattr(getattr(product, "type", None), "name", None))
-    if not subtype_name and not _is_mapping(product):
-        subtype_name = _normalize_text(getattr(getattr(product, "subtype", None), "name", None))
-
-    for token in rules["preferred_subtypes"]:
-        if _matches_rule_name(subtype_name, token):
-            return {
-                "scope": "subtype",
-                "scope_name": _product_get(product, "subtype_name", "subtypeName") or getattr(getattr(product, "subtype", None), "name", None),
-                "effect": "preferred",
-                "token": token,
-            }
-    for token in rules["restricted_subtypes"]:
-        if _matches_rule_name(subtype_name, token):
-            return {
-                "scope": "subtype",
-                "scope_name": _product_get(product, "subtype_name", "subtypeName") or getattr(getattr(product, "subtype", None), "name", None),
-                "effect": "restricted",
-                "token": token,
-            }
-
-    for token in rules["preferred_types"]:
-        if _matches_rule_name(type_name, token):
-            return {
-                "scope": "type",
-                "scope_name": _product_get(product, "type_name", "typeName") or getattr(getattr(product, "type", None), "name", None),
-                "effect": "preferred",
-                "token": token,
-            }
-    for token in rules["restricted_types"]:
-        if _matches_rule_name(type_name, token):
-            return {
-                "scope": "type",
-                "scope_name": _product_get(product, "type_name", "typeName") or getattr(getattr(product, "type", None), "name", None),
-                "effect": "restricted",
-                "token": token,
-            }
-
+    del goal_type, product
     return None
 
 
 def get_goal_nutrient_profiles_payload() -> Dict[str, dict]:
     return {
-        goal_type: {
-            "preferred": sorted(profile.get("preferred", [])),
-            "restricted": sorted(profile.get("restricted", [])),
+        "default": {
+            "preferred": sorted(DEFAULT_COVERAGE_CODES),
+            "restricted": sorted(DEFAULT_LIMIT_CODES),
         }
-        for goal_type, profile in GOAL_NUTRIENT_PROFILES.items()
     }
 
 
@@ -621,6 +406,33 @@ def _build_percentile_map(values_by_product: Dict[int, float]) -> Dict[int, floa
     return percentile_map
 
 
+def _build_rank_percent_map(values_by_product: Dict[int, float], invert: bool = False) -> Dict[int, float]:
+    if not values_by_product:
+        return {}
+
+    ordered = sorted(values_by_product.items(), key=lambda pair: pair[1])
+    total = len(ordered)
+    if total == 1:
+        only_id = ordered[0][0]
+        return {only_id: 100.0}
+
+    result: Dict[int, float] = {}
+    index = 0
+    while index < total:
+        end = index
+        while end + 1 < total and ordered[end + 1][1] == ordered[index][1]:
+            end += 1
+        avg_rank = (index + 1 + end + 1) / 2.0
+        percent = ((avg_rank - 1.0) / (total - 1.0)) * 100.0
+        if invert:
+            percent = 100.0 - percent
+        for position in range(index, end + 1):
+            result[ordered[position][0]] = round(percent, 1)
+        index = end + 1
+
+    return result
+
+
 def _percentile_to_quartile_score(percentile_q: float) -> int:
     if percentile_q < 0.25:
         return 1
@@ -638,6 +450,16 @@ def _compute_signal_strength(percentile_q: Optional[float]) -> Tuple[str, str]:
     if value >= 0.50:
         return "moderate", "умеренное"
     return "weak", "слабое"
+
+
+def _level_from_sum(value: Optional[float], qua1: Optional[float], qua3: Optional[float]) -> Optional[dict]:
+    if value is None or qua1 is None or qua3 is None:
+        return None
+    if value <= qua1:
+        return {"code": "low", "label": "Низкий"}
+    if value >= qua3:
+        return {"code": "high", "label": "Высокий"}
+    return {"code": "medium", "label": "Средний"}
 
 
 def _format_percentile_text(percentile_q: Optional[float]) -> str:
@@ -718,10 +540,8 @@ def _build_reason_factor(signal: dict, goal_type: Optional[str]) -> dict:
 
 
 def _category_adjustment_for_rule(rule: Optional[dict]) -> float:
-    if not rule:
-        return 0.0
-    weight = CATEGORY_RULE_SCOPE_WEIGHT.get(rule.get("scope") or "", 0.0)
-    return weight if rule.get("effect") == "preferred" else -weight
+    del rule
+    return 0.0
 
 
 def _classify(score_s: Optional[float], qua1: Optional[float], qua3: Optional[float]) -> Tuple[str, str, str]:
@@ -846,8 +666,12 @@ def _build_group_metrics(
             "category_adjustment": 0.0,
             "coverage_sum": None,
             "limit_sum": None,
+            "coverage_percent_100": None,
+            "limit_percent_100": None,
             "priority_raw": None,
             "score_percent_100": None,
+            "coverage_level": None,
+            "limit_level": None,
             "qua1": None,
             "qua2": None,
             "qua3": None,
@@ -914,8 +738,12 @@ def _build_group_metrics(
         limit_sum_map[product_id] = limit_sum
         score_map[product_id] = coverage_sum - limit_sum + category_adjustment
 
+    coverage_qua1, coverage_qua2, coverage_qua3 = _compute_quartiles(list(coverage_sum_map.values()))
+    limit_qua1, limit_qua2, limit_qua3 = _compute_quartiles(list(limit_sum_map.values()))
     qua1, qua2, qua3 = _compute_quartiles(list(score_map.values()))
-    score_percentile = _build_percentile_map(score_map)
+    coverage_percentile = _build_rank_percent_map(coverage_sum_map, invert=False)
+    limit_percentile = _build_rank_percent_map(limit_sum_map, invert=True)
+    score_percentile = _build_rank_percent_map(score_map, invert=False)
 
     return {
         product_id: {
@@ -928,13 +756,21 @@ def _build_group_metrics(
             "category_adjustment": category_adjustment_map.get(product_id, 0.0),
             "coverage_sum": coverage_sum_map.get(product_id),
             "limit_sum": limit_sum_map.get(product_id),
+            "coverage_percent_100": coverage_percentile.get(product_id),
+            "limit_percent_100": limit_percentile.get(product_id),
             "priority_raw": score_map.get(product_id),
-            "score_percent_100": None
-            if product_id not in score_percentile
-            else round(score_percentile[product_id] * 100.0, 1),
+            "score_percent_100": score_percentile.get(product_id),
+            "coverage_level": _level_from_sum(coverage_sum_map.get(product_id), coverage_qua1, coverage_qua3),
+            "limit_level": _level_from_sum(limit_sum_map.get(product_id), limit_qua1, limit_qua3),
             "qua1": qua1,
             "qua2": qua2,
             "qua3": qua3,
+            "coverage_qua1": coverage_qua1,
+            "coverage_qua2": coverage_qua2,
+            "coverage_qua3": coverage_qua3,
+            "limit_qua1": limit_qua1,
+            "limit_qua2": limit_qua2,
+            "limit_qua3": limit_qua3,
         }
         for product_id in score_map
     }
@@ -1006,7 +842,7 @@ def recommend(
         comparison_mode = COMPARISON_MODE_SUBGROUP
 
     profile = get_object_or_404(ConsumerProfile, pk=profile_id)
-    goal = ConsumerGoal.objects.filter(profile=profile, is_active=True).order_by("-id").first()
+    goal = ensure_active_goal(profile)
     prefs = list(goal.nutrient_preferences.select_related("nutrient_code").all()) if goal else []
     prefs_by_code = {pref.nutrient_code_id: pref for pref in prefs}
 
@@ -1111,6 +947,10 @@ def recommend(
         category_adjustment = metrics.get("category_adjustment", 0.0)
         coverage_sum = metrics.get("coverage_sum")
         limit_sum = metrics.get("limit_sum")
+        coverage_percent_100 = metrics.get("coverage_percent_100")
+        limit_percent_100 = metrics.get("limit_percent_100")
+        coverage_level = metrics.get("coverage_level")
+        limit_level = metrics.get("limit_level")
         priority_raw = metrics.get("priority_raw")
         score_percent_100 = metrics.get("score_percent_100")
         qua1 = metrics.get("qua1")
@@ -1151,6 +991,10 @@ def recommend(
             "priority_raw": priority_raw,
             "coverage_sum": coverage_sum,
             "limit_sum": limit_sum,
+            "coverage_percent_100": coverage_percent_100,
+            "limit_percent_100": limit_percent_100,
+            "coverage_level": coverage_level,
+            "limit_level": limit_level,
             "category_adjustment": category_adjustment,
             "qua1": qua1,
             "qua2": qua2,
@@ -1182,6 +1026,8 @@ def recommend(
                 "color": color,
                 "score_index_s": priority_raw,
                 "score_percent_100": score_percent_100,
+                "coverage_percent_100": coverage_percent_100,
+                "limit_percent_100": limit_percent_100,
                 "comparison_scope": comparison_scope,
                 "comparison_group": {
                     "id": comparison_id,
@@ -1210,6 +1056,10 @@ def recommend(
                 "score_breakdown": {
                     "coverage_sum": coverage_sum,
                     "limit_sum": limit_sum,
+                    "coverage_percent_100": coverage_percent_100,
+                    "limit_percent_100": limit_percent_100,
+                    "coverage_level": coverage_level,
+                    "limit_level": limit_level,
                     "category_adjustment": category_adjustment,
                     "priority_raw": priority_raw,
                 },
