@@ -648,6 +648,8 @@ def _build_group_metrics(
     comparison_mode: str,
     server_product_map: Optional[Dict[int, FoodProducts]] = None,
 ) -> Dict[int, dict]:
+    has_coverage_dimension = any(role == "preferred" for role in active_roles.values())
+    has_limit_dimension = any(role == "restricted" for role in active_roles.values())
     blocked_cache = {
         _product_id(product): is_blocked(profile, product, server_product_map=server_product_map)
         for product in group_products
@@ -672,6 +674,8 @@ def _build_group_metrics(
             "score_percent_100": None,
             "coverage_level": None,
             "limit_level": None,
+            "has_coverage_dimension": has_coverage_dimension,
+            "has_limit_dimension": has_limit_dimension,
             "qua1": None,
             "qua2": None,
             "qua3": None,
@@ -736,13 +740,23 @@ def _build_group_metrics(
         category_adjustment_map[product_id] = category_adjustment
         coverage_sum_map[product_id] = coverage_sum
         limit_sum_map[product_id] = limit_sum
-        score_map[product_id] = coverage_sum - limit_sum + category_adjustment
+        if has_coverage_dimension and has_limit_dimension:
+            priority_raw = coverage_sum - limit_sum + category_adjustment
+        elif has_coverage_dimension:
+            priority_raw = coverage_sum + category_adjustment
+        elif has_limit_dimension:
+            priority_raw = -limit_sum + category_adjustment
+        else:
+            priority_raw = category_adjustment
+        score_map[product_id] = priority_raw
 
-    coverage_qua1, coverage_qua2, coverage_qua3 = _compute_quartiles(list(coverage_sum_map.values()))
-    limit_qua1, limit_qua2, limit_qua3 = _compute_quartiles(list(limit_sum_map.values()))
+    coverage_values = list(coverage_sum_map.values()) if has_coverage_dimension else []
+    limit_values = list(limit_sum_map.values()) if has_limit_dimension else []
+    coverage_qua1, coverage_qua2, coverage_qua3 = _compute_quartiles(coverage_values)
+    limit_qua1, limit_qua2, limit_qua3 = _compute_quartiles(limit_values)
     qua1, qua2, qua3 = _compute_quartiles(list(score_map.values()))
-    coverage_percentile = _build_rank_percent_map(coverage_sum_map, invert=False)
-    limit_percentile = _build_rank_percent_map(limit_sum_map, invert=True)
+    coverage_percentile = _build_rank_percent_map(coverage_sum_map, invert=False) if has_coverage_dimension else {}
+    limit_percentile = _build_rank_percent_map(limit_sum_map, invert=True) if has_limit_dimension else {}
     score_percentile = _build_rank_percent_map(score_map, invert=False)
 
     return {
@@ -760,8 +774,10 @@ def _build_group_metrics(
             "limit_percent_100": limit_percentile.get(product_id),
             "priority_raw": score_map.get(product_id),
             "score_percent_100": score_percentile.get(product_id),
-            "coverage_level": _level_from_sum(coverage_sum_map.get(product_id), coverage_qua1, coverage_qua3),
-            "limit_level": _level_from_sum(limit_sum_map.get(product_id), limit_qua1, limit_qua3),
+            "coverage_level": _level_from_sum(coverage_sum_map.get(product_id), coverage_qua1, coverage_qua3) if has_coverage_dimension else None,
+            "limit_level": _level_from_sum(limit_sum_map.get(product_id), limit_qua1, limit_qua3) if has_limit_dimension else None,
+            "has_coverage_dimension": has_coverage_dimension,
+            "has_limit_dimension": has_limit_dimension,
             "qua1": qua1,
             "qua2": qua2,
             "qua3": qua3,
@@ -851,6 +867,11 @@ def recommend(
     nutrient_rows = NutrientDictionary.objects.filter(is_active=True)
     nutrient_map = {n.code: n for n in nutrient_rows}
     active_roles = _build_active_roles(goal, prefs, nutrient_map)
+    has_coverage_dimension = any(role == "preferred" for role in active_roles.values())
+    has_limit_dimension = any(role == "restricted" for role in active_roles.values())
+
+    if not has_coverage_dimension and not has_limit_dimension:
+        raise ValueError("Для расчета рекомендаций нужно выбрать хотя бы одно пищевое вещество покрытия или лимитной нагрузки.")
 
     server_product_map: Dict[int, FoodProducts] = {}
     if local_products:
@@ -1087,8 +1108,16 @@ def recommend(
                     "coverage_formula": "coverage_sum = sum(quartile_score for preferred nutrients)",
                     "limit_formula": "limit_sum = sum(quartile_score for restricted nutrients)",
                     "category_formula": "category_adjustment = +/- scope_weight, where subtype=2 and type=1",
-                    "score_formula": "priority_raw = coverage_sum - limit_sum + category_adjustment",
+                    "score_formula": (
+                        "priority_raw = coverage_sum - limit_sum + category_adjustment"
+                        if has_coverage_dimension and has_limit_dimension
+                        else ("priority_raw = coverage_sum + category_adjustment" if has_coverage_dimension else "priority_raw = -limit_sum + category_adjustment")
+                    ),
                     "class_formula": "best_fit if priority_raw >= Qua3; limited_fit if Qua1 < priority_raw < Qua3; not_recommended if priority_raw <= Qua1",
+                },
+                "dimensions": {
+                    "has_coverage_dimension": has_coverage_dimension,
+                    "has_limit_dimension": has_limit_dimension,
                 },
                 "comparison_mode": comparison_mode,
                 "filters": {
@@ -1118,6 +1147,8 @@ def recommend(
         "goal_id": goal.id if goal else None,
         "mode": mode,
         "comparison_mode": comparison_mode,
+        "has_coverage_dimension": has_coverage_dimension,
+        "has_limit_dimension": has_limit_dimension,
         "count": min(len(items), limit),
         "items": items[:limit],
     }

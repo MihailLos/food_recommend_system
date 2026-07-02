@@ -246,6 +246,8 @@ function DetailsModal({ item, onClose }) {
 
   const score = item.score_components || {};
   const explain = item.explain || {};
+  const hasCoverageDimension = explain?.dimensions?.has_coverage_dimension !== false;
+  const hasLimitDimension = explain?.dimensions?.has_limit_dimension !== false;
   const comparisonName = explain?.comparison_group?.name || "—";
   const coverageMeta = levelMeta(score.coverage_level);
   const limitMeta = limitLevelMeta(score.limit_level);
@@ -264,20 +266,24 @@ function DetailsModal({ item, onClose }) {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-          <div style={{ ...box, padding: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Уровень покрытия</div>
-            <div style={{ fontSize: 24, fontWeight: 700 }}>{fmtPercent(score.coverage_percent_100)}</div>
-            <div style={{ marginTop: 8, display: "inline-block", padding: "4px 8px", borderRadius: 999, border: `1px solid ${coverageMeta.border}`, background: coverageMeta.bg }}>
-              {coverageMeta.text}
+          {hasCoverageDimension && (
+            <div style={{ ...box, padding: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Уровень покрытия</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{fmtPercent(score.coverage_percent_100)}</div>
+              <div style={{ marginTop: 8, display: "inline-block", padding: "4px 8px", borderRadius: 999, border: `1px solid ${coverageMeta.border}`, background: coverageMeta.bg }}>
+                {coverageMeta.text}
+              </div>
             </div>
-          </div>
-          <div style={{ ...box, padding: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Уровень лимитной нагрузки</div>
-            <div style={{ fontSize: 24, fontWeight: 700 }}>{fmtPercent(score.limit_percent_100)}</div>
-            <div style={{ marginTop: 8, display: "inline-block", padding: "4px 8px", borderRadius: 999, border: `1px solid ${limitMeta.border}`, background: limitMeta.bg }}>
-              {limitMeta.text}
+          )}
+          {hasLimitDimension && (
+            <div style={{ ...box, padding: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Уровень лимитной нагрузки</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{fmtPercent(score.limit_percent_100)}</div>
+              <div style={{ marginTop: 8, display: "inline-block", padding: "4px 8px", borderRadius: 999, border: `1px solid ${limitMeta.border}`, background: limitMeta.bg }}>
+                {limitMeta.text}
+              </div>
             </div>
-          </div>
+          )}
           <div style={{ ...box, padding: 12 }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>Итоговая оценка приоритетности</div>
             <div style={{ fontSize: 24, fontWeight: 700 }}>{fmtPercent(score.score_percent_100)}</div>
@@ -290,36 +296,40 @@ function DetailsModal({ item, onClose }) {
         <div style={{ ...box, padding: 12, display: "grid", gap: 10 }}>
           <div style={{ fontWeight: 700 }}>Что сильнее всего повлияло на результат</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-            <div>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>Пищевые вещества покрытия</div>
-              {positiveFactors.length ? (
-                <ul style={{ margin: 0, paddingLeft: 18, color: "#444", lineHeight: 1.55 }}>
-                  {positiveFactors.map((factor) => (
-                    <li key={factor.code}>
-                      <div>{factor.short_text}</div>
-                      <div style={{ fontSize: 12, color: "#666" }}>{factor.detail_text}</div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div style={{ color: "#666", fontSize: 13 }}>Сильные факторы не выделены.</div>
-              )}
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>Пищевые вещества лимитной нагрузки</div>
-              {limitingFactors.length ? (
-                <ul style={{ margin: 0, paddingLeft: 18, color: "#444", lineHeight: 1.55 }}>
-                  {limitingFactors.map((factor) => (
-                    <li key={factor.code}>
-                      <div>{factor.short_text}</div>
-                      <div style={{ fontSize: 12, color: "#666" }}>{factor.detail_text}</div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div style={{ color: "#666", fontSize: 13 }}>Ограничивающие факторы не выделены.</div>
-              )}
-            </div>
+            {hasCoverageDimension && (
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Пищевые вещества покрытия</div>
+                {positiveFactors.length ? (
+                  <ul style={{ margin: 0, paddingLeft: 18, color: "#444", lineHeight: 1.55 }}>
+                    {positiveFactors.map((factor) => (
+                      <li key={factor.code}>
+                        <div>{factor.short_text}</div>
+                        <div style={{ fontSize: 12, color: "#666" }}>{factor.detail_text}</div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div style={{ color: "#666", fontSize: 13 }}>Сильные факторы не выделены.</div>
+                )}
+              </div>
+            )}
+            {hasLimitDimension && (
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Пищевые вещества лимитной нагрузки</div>
+                {limitingFactors.length ? (
+                  <ul style={{ margin: 0, paddingLeft: 18, color: "#444", lineHeight: 1.55 }}>
+                    {limitingFactors.map((factor) => (
+                      <li key={factor.code}>
+                        <div>{factor.short_text}</div>
+                        <div style={{ fontSize: 12, color: "#666" }}>{factor.detail_text}</div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div style={{ color: "#666", fontSize: 13 }}>Ограничивающие факторы не выделены.</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -327,8 +337,8 @@ function DetailsModal({ item, onClose }) {
           <summary style={{ cursor: "pointer", fontWeight: 700 }}>Показать детали расчета</summary>
           <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
             <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-              <div>Суммарное покрытие: {fmt(score.coverage_sum, 2)}</div>
-              <div>Суммарная лимитная нагрузка: {fmt(score.limit_sum, 2)}</div>
+              {hasCoverageDimension && <div>Суммарное покрытие: {fmt(score.coverage_sum, 2)}</div>}
+              {hasLimitDimension && <div>Суммарная лимитная нагрузка: {fmt(score.limit_sum, 2)}</div>}
               <div>Балансовая оценка: {fmt(score.priority_raw, 2)}</div>
             </div>
             <SignalTable signals={explain.signals || []} />
@@ -486,6 +496,8 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     });
     return data;
   }, [rawItems, sortBy, sortDirection]);
+  const hasCoverageDimension = payload?.has_coverage_dimension !== false;
+  const hasLimitDimension = payload?.has_limit_dimension !== false;
 
   const loadRecommendations = useCallback(async () => {
     if (!profileIdNum) return;
@@ -881,16 +893,20 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
               <thead>
                 <tr>
                   <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>Продукт</th>
-                  <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
-                    <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("coverage_percent_100")}>
-                      {sortLabel("coverage_percent_100", "Уровень покрытия")}
-                    </button>
-                  </th>
-                  <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
-                    <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("limit_percent_100")}>
-                      {sortLabel("limit_percent_100", "Уровень лимитной нагрузки")}
-                    </button>
-                  </th>
+                  {hasCoverageDimension && (
+                    <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
+                      <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("coverage_percent_100")}>
+                        {sortLabel("coverage_percent_100", "Уровень покрытия")}
+                      </button>
+                    </th>
+                  )}
+                  {hasLimitDimension && (
+                    <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
+                      <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("limit_percent_100")}>
+                        {sortLabel("limit_percent_100", "Уровень лимитной нагрузки")}
+                      </button>
+                    </th>
+                  )}
                   <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
                     <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("score_percent_100")}>
                       {sortLabel("score_percent_100", "Итоговая оценка приоритетности")}
@@ -912,18 +928,22 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                           {item.product?.subtype_name || item.product?.type_name || "Без подгруппы"}
                         </div>
                       </td>
-                      <td style={{ padding: "10px 8px", borderBottom: "1px solid #f3f3f3", minWidth: 180 }}>
-                        <div style={{ fontWeight: 700 }}>{fmtPercent(score.coverage_percent_100)}</div>
-                        <div style={{ marginTop: 6, display: "inline-block", padding: "4px 8px", borderRadius: 999, border: `1px solid ${coverage.border}`, background: coverage.bg, fontSize: 12 }}>
-                          {coverage.text}
-                        </div>
-                      </td>
-                      <td style={{ padding: "10px 8px", borderBottom: "1px solid #f3f3f3", minWidth: 180 }}>
-                        <div style={{ fontWeight: 700 }}>{fmtPercent(score.limit_percent_100)}</div>
-                        <div style={{ marginTop: 6, display: "inline-block", padding: "4px 8px", borderRadius: 999, border: `1px solid ${limit.border}`, background: limit.bg, fontSize: 12 }}>
-                          {limit.text}
-                        </div>
-                      </td>
+                      {hasCoverageDimension && (
+                        <td style={{ padding: "10px 8px", borderBottom: "1px solid #f3f3f3", minWidth: 180 }}>
+                          <div style={{ fontWeight: 700 }}>{fmtPercent(score.coverage_percent_100)}</div>
+                          <div style={{ marginTop: 6, display: "inline-block", padding: "4px 8px", borderRadius: 999, border: `1px solid ${coverage.border}`, background: coverage.bg, fontSize: 12 }}>
+                            {coverage.text}
+                          </div>
+                        </td>
+                      )}
+                      {hasLimitDimension && (
+                        <td style={{ padding: "10px 8px", borderBottom: "1px solid #f3f3f3", minWidth: 180 }}>
+                          <div style={{ fontWeight: 700 }}>{fmtPercent(score.limit_percent_100)}</div>
+                          <div style={{ marginTop: 6, display: "inline-block", padding: "4px 8px", borderRadius: 999, border: `1px solid ${limit.border}`, background: limit.bg, fontSize: 12 }}>
+                            {limit.text}
+                          </div>
+                        </td>
+                      )}
                       <td style={{ padding: "10px 8px", borderBottom: "1px solid #f3f3f3", minWidth: 180 }}>
                         <div style={{ fontWeight: 700, fontSize: 20 }}>{fmtPercent(score.score_percent_100)}</div>
                         <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
