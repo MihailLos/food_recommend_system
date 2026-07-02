@@ -27,7 +27,16 @@ const btn = {
   cursor: "pointer",
 };
 
-const HIDDEN_NUTRIENT_CODES = new Set(["starch_g", "ash_g"]);
+const dragItemStyles = {
+  padding: "8px 10px",
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  background: "#fff",
+  cursor: "grab",
+  fontSize: 13,
+};
+
+const HIDDEN_NUTRIENT_CODES = new Set(["starch_g", "ash_g", "alcohol_pct"]);
 
 const TARGET_SECTIONS = [
   {
@@ -79,6 +88,27 @@ function normalizeList(data) {
   return [];
 }
 
+function formatUnit(unit) {
+  if (!unit) return "—";
+  if (unit === "g") return "граммы (г)";
+  if (unit === "mg") return "миллиграммы (мг)";
+  return unit;
+}
+
+function buildSnapshot({ energyDeltaKcal, targetValues, coverageCodes, limitCodes, overrideCodes }) {
+  return JSON.stringify({
+    energyDeltaKcal: Number(energyDeltaKcal || 0),
+    targetValues: Object.fromEntries(
+      Object.entries(targetValues || {})
+        .map(([key, value]) => [key, value === "" ? "" : round2(value)])
+        .sort(([left], [right]) => left.localeCompare(right, "ru"))
+    ),
+    coverageCodes: [...(coverageCodes || [])].sort((a, b) => a.localeCompare(b, "ru")),
+    limitCodes: [...(limitCodes || [])].sort((a, b) => a.localeCompare(b, "ru")),
+    overrideCodes: [...(overrideCodes || [])].sort((a, b) => a.localeCompare(b, "ru")),
+  });
+}
+
 function toNumberOrEmpty(value) {
   if (value === "" || value == null) return "";
   const number = Number(value);
@@ -122,13 +152,53 @@ function InfoText({ children }) {
   return <div style={{ fontSize: 13, color: "#555", lineHeight: 1.55 }}>{children}</div>;
 }
 
-function NutrientChips({ codes, nutrientMeta, onRemove, color }) {
+function NutrientChips({ codes, nutrientMeta, onRemove, color, onDropCode, dragTarget, direction }) {
   if (!codes.length) {
-    return <div style={{ fontSize: 12, color: "#666" }}>Список пока пуст.</div>;
+    return (
+      <div
+        onDragOver={(event) => {
+          if (onDropCode) {
+            event.preventDefault();
+          }
+        }}
+        onDrop={(event) => {
+          if (!onDropCode) return;
+          event.preventDefault();
+          const code = event.dataTransfer.getData("text/plain");
+          if (code) onDropCode(code);
+        }}
+        style={{
+          minHeight: 72,
+          border: "1px dashed #d8d8d8",
+          borderRadius: 10,
+          padding: 10,
+          background: dragTarget === direction ? "rgba(46,125,50,0.06)" : "#fafafa",
+          fontSize: 12,
+          color: "#666",
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        Перетащите сюда пищевое вещество.
+      </div>
+    );
   }
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+    <div
+      onDragOver={(event) => {
+        if (onDropCode) {
+          event.preventDefault();
+        }
+      }}
+      onDrop={(event) => {
+        if (!onDropCode) return;
+        event.preventDefault();
+        const code = event.dataTransfer.getData("text/plain");
+        if (code) onDropCode(code);
+      }}
+      style={{ display: "flex", flexWrap: "wrap", gap: 8, minHeight: 72 }}
+    >
       {codes.map((code) => (
         <div
           key={code}
@@ -178,9 +248,10 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [coverageCodes, setCoverageCodes] = useState([]);
   const [limitCodes, setLimitCodes] = useState([]);
   const [overrideCodes, setOverrideCodes] = useState(new Set());
-  const [pickerCode, setPickerCode] = useState("");
+  const [dragTarget, setDragTarget] = useState("");
   const bootstrappedRef = useRef(false);
   const saveTimerRef = useRef(null);
+  const lastSavedSnapshotRef = useRef("");
 
   const profileIdNum = useMemo(() => {
     const value = Number(profileId);
@@ -234,8 +305,15 @@ export default function ConsumerGoalsTab({ profileId }) {
       setBaseTargetValues(flattened);
       setCoverageCodes(targetsData?.guidance_lists?.coverage_codes || []);
       setLimitCodes(targetsData?.guidance_lists?.limit_codes || []);
-      setOverrideCodes(new Set(overrides));
-      setPickerCode("");
+      const nextOverrideCodes = new Set(overrides);
+      setOverrideCodes(nextOverrideCodes);
+      lastSavedSnapshotRef.current = buildSnapshot({
+        energyDeltaKcal: Number(targetsData?.energy_delta_kcal || 0),
+        targetValues: flattened,
+        coverageCodes: targetsData?.guidance_lists?.coverage_codes || [],
+        limitCodes: targetsData?.guidance_lists?.limit_codes || [],
+        overrideCodes: nextOverrideCodes,
+      });
       setSaveStatus("idle");
       bootstrappedRef.current = true;
     } catch (requestError) {
@@ -299,7 +377,15 @@ export default function ConsumerGoalsTab({ profileId }) {
       setEnergyDeltaKcal(Number(updated?.energy_delta_kcal || 0));
       setCoverageCodes(updated?.guidance_lists?.coverage_codes || []);
       setLimitCodes(updated?.guidance_lists?.limit_codes || []);
-      setOverrideCodes(new Set(Object.keys(updated?.manual_target_overrides || {})));
+      const nextOverrideCodes = new Set(Object.keys(updated?.manual_target_overrides || {}));
+      setOverrideCodes(nextOverrideCodes);
+      lastSavedSnapshotRef.current = buildSnapshot({
+        energyDeltaKcal: Number(updated?.energy_delta_kcal || 0),
+        targetValues: flattened,
+        coverageCodes: updated?.guidance_lists?.coverage_codes || [],
+        limitCodes: updated?.guidance_lists?.limit_codes || [],
+        overrideCodes: nextOverrideCodes,
+      });
       setSaveStatus("saved");
     } catch (requestError) {
       setSaveStatus("error");
@@ -311,6 +397,17 @@ export default function ConsumerGoalsTab({ profileId }) {
 
   useEffect(() => {
     if (!bootstrappedRef.current) return undefined;
+    const nextSnapshot = buildSnapshot({
+      energyDeltaKcal,
+      targetValues,
+      coverageCodes,
+      limitCodes,
+      overrideCodes,
+    });
+    if (nextSnapshot === lastSavedSnapshotRef.current) {
+      setSaveStatus((current) => (current === "saving" ? current : "idle"));
+      return undefined;
+    }
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
@@ -322,7 +419,7 @@ export default function ConsumerGoalsTab({ profileId }) {
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [persist]);
+  }, [coverageCodes, energyDeltaKcal, limitCodes, overrideCodes, persist, targetValues]);
 
   const setTargetField = (code, value) => {
     const parsed = toNumberOrEmpty(value);
@@ -343,16 +440,16 @@ export default function ConsumerGoalsTab({ profileId }) {
     });
   };
 
-  const moveCode = (direction) => {
-    if (!pickerCode) return;
+  const assignCode = (code, direction) => {
+    if (!code) return;
     if (direction === "coverage") {
-      setCoverageCodes((prev) => (prev.includes(pickerCode) ? prev : [...prev, pickerCode]));
-      setLimitCodes((prev) => prev.filter((code) => code !== pickerCode));
+      setCoverageCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
+      setLimitCodes((prev) => prev.filter((item) => item !== code));
     } else {
-      setLimitCodes((prev) => (prev.includes(pickerCode) ? prev : [...prev, pickerCode]));
-      setCoverageCodes((prev) => prev.filter((code) => code !== pickerCode));
+      setLimitCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
+      setCoverageCodes((prev) => prev.filter((item) => item !== code));
     }
-    setPickerCode("");
+    setDragTarget("");
   };
 
   const removeCoverageCode = (code) => {
@@ -373,7 +470,7 @@ export default function ConsumerGoalsTab({ profileId }) {
           .map((code) => ({
             code,
             label: nutrientMeta(code)?.ru_name || code,
-            unit: nutrientMeta(code)?.unit || "",
+            unit: formatUnit(nutrientMeta(code)?.unit || ""),
             value: targetValues[code] ?? "",
             overridden: overrideCodes.has(code),
           })),
@@ -412,22 +509,56 @@ export default function ConsumerGoalsTab({ profileId }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
           <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>TDEE</div>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Расчетный суточный расход энергии</div>
             <div>{targets?.energy_calc?.tdee_kcal_day ?? "—"} ккал/сут</div>
             <InfoText>Суточные энерготраты по профилю с учетом физической активности.</InfoText>
           </div>
 
           <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 600 }}>Изменение TDEE</div>
-            <input
-              style={input}
-              type="number"
-              step="10"
-              value={energyDeltaKcal}
-              onChange={(event) => setEnergyDeltaKcal(Number(event.target.value || 0))}
-            />
+            <div style={{ fontWeight: 600 }}>Изменение расчетного суточного расхода энергии</div>
+            <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0, 1fr)", gap: 8 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  style={{
+                    ...btn,
+                    padding: "8px 0",
+                    width: 24,
+                    borderColor: energyDeltaKcal < 0 ? "#c62828" : "#ddd",
+                    color: energyDeltaKcal < 0 ? "#c62828" : "#444",
+                  }}
+                  onClick={() => setEnergyDeltaKcal(-Math.abs(Number(energyDeltaKcal || 0)))}
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...btn,
+                    padding: "8px 0",
+                    width: 24,
+                    borderColor: energyDeltaKcal >= 0 ? "#2e7d32" : "#ddd",
+                    color: energyDeltaKcal >= 0 ? "#2e7d32" : "#444",
+                  }}
+                  onClick={() => setEnergyDeltaKcal(Math.abs(Number(energyDeltaKcal || 0)))}
+                >
+                  +
+                </button>
+              </div>
+              <input
+                style={input}
+                type="number"
+                min="0"
+                step="10"
+                value={Math.abs(Number(energyDeltaKcal || 0))}
+                onChange={(event) => {
+                  const magnitude = Math.abs(Number(event.target.value || 0));
+                  setEnergyDeltaKcal(energyDeltaKcal < 0 ? -magnitude : magnitude);
+                }}
+              />
+            </div>
             <InfoText>
-              Если специалист рекомендовал дефицит или профицит энергии, задай его здесь. Поле сохраняется автоматически.
+              Если специалист рекомендовал дефицит или профицит энергии, задай величину здесь, а направление выбери кнопками «−» или «+».
             </InfoText>
           </div>
 
@@ -495,34 +626,54 @@ export default function ConsumerGoalsTab({ profileId }) {
           покрытия, лимитной нагрузки и итоговой приоритетности продукта.
         </InfoText>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 8, alignItems: "end" }}>
-          <div style={{ display: "grid", gap: 6 }}>
-            <label>Добавить пищевое вещество</label>
-            <select style={input} value={pickerCode} onChange={(event) => setPickerCode(event.target.value)}>
-              <option value="">Выберите вещество</option>
-              {unassignedNutrients.map((item) => (
-                <option key={item.code} value={item.code}>
-                  {item.ru_name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button type="button" style={{ ...btn, borderColor: "#2e7d32" }} onClick={() => moveCode("coverage")} disabled={!pickerCode}>
-            В покрытие
-          </button>
-          <button type="button" style={{ ...btn, borderColor: "#c62828" }} onClick={() => moveCode("limit")} disabled={!pickerCode}>
-            В лимиты
-          </button>
-        </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
           <div style={{ border: "1px solid #d8ead7", borderRadius: 12, padding: 12, display: "grid", gap: 10 }}>
             <div style={{ fontWeight: 700, color: "#2e7d32" }}>Пищевые вещества покрытия</div>
-            <NutrientChips codes={coverageCodes} nutrientMeta={nutrientMeta} onRemove={removeCoverageCode} color="#2e7d32" />
+            <NutrientChips
+              codes={coverageCodes}
+              nutrientMeta={nutrientMeta}
+              onRemove={removeCoverageCode}
+              color="#2e7d32"
+              onDropCode={(code) => assignCode(code, "coverage")}
+              dragTarget={dragTarget}
+              direction="coverage"
+            />
           </div>
           <div style={{ border: "1px solid #f1d7d7", borderRadius: 12, padding: 12, display: "grid", gap: 10 }}>
             <div style={{ fontWeight: 700, color: "#c62828" }}>Пищевые вещества лимитной нагрузки</div>
-            <NutrientChips codes={limitCodes} nutrientMeta={nutrientMeta} onRemove={removeLimitCode} color="#c62828" />
+            <NutrientChips
+              codes={limitCodes}
+              nutrientMeta={nutrientMeta}
+              onRemove={removeLimitCode}
+              color="#c62828"
+              onDropCode={(code) => assignCode(code, "limit")}
+              dragTarget={dragTarget}
+              direction="limit"
+            />
+          </div>
+          <div style={{ border: "1px dashed #c8d0d8", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
+            <div style={{ fontWeight: 700 }}>Доступные пищевые вещества</div>
+            <InfoText>Перетащи вещество в один из списков слева.</InfoText>
+            {unassignedNutrients.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#666" }}>Все доступные вещества уже распределены по спискам.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {unassignedNutrients.map((item) => (
+                  <div
+                    key={item.code}
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData("text/plain", item.code);
+                    }}
+                    onDragEnd={() => setDragTarget("")}
+                    style={dragItemStyles}
+                  >
+                    <div style={{ fontWeight: 600 }}>{item.ru_name}</div>
+                    <div style={{ fontSize: 11, color: "#666" }}>{formatUnit(item.unit)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
