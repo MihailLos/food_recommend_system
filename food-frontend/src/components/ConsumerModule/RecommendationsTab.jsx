@@ -129,6 +129,95 @@ function limitLevelMeta(level) {
   return { bg: "#f5f5f5", border: "#bbb", text: "—" };
 }
 
+function describeQuartilePosition(percent, direction) {
+  if (typeof percent !== "number" || !Number.isFinite(percent)) return "Положение в выборке не определено.";
+  const rounded = percent.toFixed(1);
+  if (direction === "coverage") {
+    if (percent >= 75) return `Продукт входит в верхний квартиль по покрытию и выше, чем у ${rounded}% продуктов выборки.`;
+    if (percent >= 50) return `Продукт выше медианы по покрытию и выше, чем у ${rounded}% продуктов выборки.`;
+    if (percent >= 25) return `Продукт находится ниже медианы по покрытию, но выше, чем у ${rounded}% продуктов выборки.`;
+    return `Продукт находится в нижнем квартиле по покрытию и выше, чем только у ${rounded}% продуктов выборки.`;
+  }
+  if (percent >= 75) return `Лимитная нагрузка выше, чем у ${rounded}% продуктов выборки. Это верхний квартиль нагрузки.`;
+  if (percent >= 50) return `Лимитная нагрузка выше медианы и выше, чем у ${rounded}% продуктов выборки.`;
+  if (percent >= 25) return `Лимитная нагрузка ниже медианы, но все еще выше, чем у ${rounded}% продуктов выборки.`;
+  return `Лимитная нагрузка находится в нижнем квартиле и выше, чем только у ${rounded}% продуктов выборки.`;
+}
+
+function QuartileScale({ title, percent, color, background, description }) {
+  const safePercent = typeof percent === "number" && Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null;
+
+  return (
+    <div style={{ ...box, padding: 12, display: "grid", gap: 10 }}>
+      <div style={{ fontWeight: 700 }}>{title}</div>
+      <div style={{ position: "relative", paddingTop: 18 }}>
+        {[25, 50, 75].map((point, index) => (
+          <div
+            key={point}
+            style={{
+              position: "absolute",
+              left: `${point}%`,
+              top: 0,
+              transform: "translateX(-50%)",
+              fontSize: 11,
+              color: "#666",
+            }}
+          >
+            {`Q${index + 1}`}
+          </div>
+        ))}
+        <div
+          style={{
+            position: "relative",
+            height: 14,
+            borderRadius: 999,
+            background: `linear-gradient(90deg, ${background} 0%, rgba(255,255,255,0.96) 100%)`,
+            border: "1px solid #d9d9d9",
+            overflow: "hidden",
+          }}
+        >
+          {[25, 50, 75].map((point) => (
+            <div
+              key={point}
+              style={{
+                position: "absolute",
+                left: `${point}%`,
+                top: -1,
+                bottom: -1,
+                width: 1,
+                background: "rgba(0,0,0,0.15)",
+              }}
+            />
+          ))}
+          {safePercent != null && (
+            <div
+              style={{
+                position: "absolute",
+                left: `${safePercent}%`,
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                width: 18,
+                height: 18,
+                borderRadius: "50%",
+                background: color,
+                border: "3px solid #fff",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+              }}
+            />
+          )}
+        </div>
+        <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", fontSize: 11, color: "#666" }}>
+          <span>0%</span>
+          <span>100%</span>
+        </div>
+      </div>
+      <div style={{ fontSize: 13, color: "#444", lineHeight: 1.5 }}>
+        {safePercent == null ? "Недостаточно данных для построения шкалы." : description}
+      </div>
+    </div>
+  );
+}
+
 function getRecommendationErrorDetail(error) {
   return (
     error?.response?.data?.error ||
@@ -253,6 +342,8 @@ function DetailsModal({ item, onClose }) {
   const limitMeta = limitLevelMeta(score.limit_level);
   const positiveFactors = explain?.summary?.positive_factors || [];
   const limitingFactors = explain?.summary?.limiting_factors || [];
+  const coveragePercent = score.coverage_percent_100;
+  const limitPercent = score.limit_percent_100;
 
   return (
     <div style={modalOverlay} onClick={onClose}>
@@ -291,6 +382,27 @@ function DetailsModal({ item, onClose }) {
               Чем выше значение, тем выше продукт расположен среди аналогов по общему балансу покрытия и лимитной нагрузки.
             </div>
           </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+          {hasCoverageDimension && (
+            <QuartileScale
+              title="Положение по покрытию в выборке"
+              percent={coveragePercent}
+              color="#1e60d9"
+              background="rgba(193, 221, 255, 0.95)"
+              description={describeQuartilePosition(coveragePercent, "coverage")}
+            />
+          )}
+          {hasLimitDimension && (
+            <QuartileScale
+              title="Положение по лимитной нагрузке в выборке"
+              percent={limitPercent}
+              color="#f57c00"
+              background="rgba(255, 233, 206, 0.95)"
+              description={describeQuartilePosition(limitPercent, "limit")}
+            />
+          )}
         </div>
 
         <div style={{ ...box, padding: 12, display: "grid", gap: 10 }}>
