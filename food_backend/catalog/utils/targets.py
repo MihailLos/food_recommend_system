@@ -3,14 +3,17 @@ from typing import Dict, Optional
 from catalog.models import (
     ConsumerGoal,
     ConsumerProfile,
+    FatAcidsNormsMR,
     MacronutrientsNormsMR,
-    VitaminsNormsMR,
     MineralsNormsMR,
+    OtherNutrientsNormsMR,
+    VitaminsNormsMR,
 )
 from catalog.utils.energy_calc import calculate_tdee_for_profile
 
 ADULT_SODIUM_NORM_MG_DAY = 1300.0
 ADULT_CHOLESTEROL_NORM_MG_DAY = 300.0
+DEFAULT_WATER_G_DAY = 2000.0
 
 
 def _find_macro_norm_row(profile: ConsumerProfile) -> MacronutrientsNormsMR:
@@ -56,6 +59,30 @@ def _load_vitamin_norms(sex: str) -> Dict[str, float]:
 def _load_mineral_norms(sex: str) -> Dict[str, float]:
     rows = MineralsNormsMR.objects.filter(sex=sex)
     return {str(r.name): float(r.norm) for r in rows}
+
+
+def _load_other_nutrient_norms() -> Dict[str, float]:
+    row = OtherNutrientsNormsMR.objects.order_by("id").first()
+    if row is None:
+        return {}
+    return {
+        "organic_acids_g": float(row.organic_acids_g)
+        if row.organic_acids_g not in (None, "")
+        else 0.0,
+    }
+
+
+def _load_fat_acid_norms() -> Dict[str, float]:
+    row = FatAcidsNormsMR.objects.order_by("id").first()
+    if row is None:
+        return {}
+    return {
+        "nlc_g_ev": float(row.nlc_g_ev) if row.nlc_g_ev not in (None, "") else 0.0,
+        "pufa_g_ev": float(row.pufa_g_ev) if row.pufa_g_ev not in (None, "") else 0.0,
+        "cholesterol_mg": float(row.cholesterol_mg)
+        if row.cholesterol_mg not in (None, "")
+        else ADULT_CHOLESTEROL_NORM_MG_DAY,
+    }
 
 
 def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
@@ -118,6 +145,16 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
 
     vitamin_norms = _load_vitamin_norms(profile.sex)
     mineral_norms = _load_mineral_norms(profile.sex)
+    other_nutrient_norms = _load_other_nutrient_norms()
+    fat_acid_norms = _load_fat_acid_norms()
+
+    water_min_g_day = float(macro_row.water_min_g) if macro_row.water_min_g not in (None, "") else DEFAULT_WATER_G_DAY
+    water_max_g_day = float(macro_row.water_max_g) if macro_row.water_max_g not in (None, "") else water_min_g_day
+    mds_min_pct_ev = float(macro_row.mds_min_g_ev) if macro_row.mds_min_g_ev not in (None, "") else 0.0
+    mds_max_pct_ev = float(macro_row.mds_max_g_ev) if macro_row.mds_max_g_ev not in (None, "") else mds_min_pct_ev
+    target_mds_g_day = round(target_energy_kcal_day * (mds_min_pct_ev / 100.0) / 4.0, 2) if target_energy_kcal_day > 0 else 0.0
+    target_nlc_g_day = round(target_energy_kcal_day * (fat_acid_norms.get("nlc_g_ev", 0.0) / 100.0) / 9.0, 2) if target_energy_kcal_day > 0 else 0.0
+    target_pufa_g_day = round(target_energy_kcal_day * (fat_acid_norms.get("pufa_g_ev", 0.0) / 100.0) / 9.0, 2) if target_energy_kcal_day > 0 else 0.0
 
     payload = {
         "profile_id": profile.id,
@@ -138,6 +175,10 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
             "carb_g_day": round(mr_carb_g_day, 2),
             "dietary_fibers_min_g_day": float(macro_row.dietary_fibers_min_g),
             "dietary_fibers_max_g_day": float(macro_row.dietary_fibers_max_g),
+            "water_min_g_day": water_min_g_day,
+            "water_max_g_day": water_max_g_day,
+            "mds_min_g_pct_ev_day": mds_min_pct_ev,
+            "mds_max_g_pct_ev_day": mds_max_pct_ev,
             "protein_pct": round(mr_protein_pct, 2),
             "fat_pct": round(mr_fat_pct, 2),
             "carb_pct": round(mr_carb_pct, 2),
@@ -164,12 +205,26 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
             "max": float(macro_row.dietary_fibers_max_g),
         },
 
-        "target_fat_acids_day": {
-            "nlc_g": round(target_energy_kcal_day * 0.10 / 9.0, 2),
-            "pufa_g": round(target_energy_kcal_day * 0.10 / 9.0, 2),
+        "target_water_g_day": {
+            "min": round(water_min_g_day, 2),
+            "max": round(water_max_g_day, 2),
         },
 
-        "target_cholesterol_mg_day": ADULT_CHOLESTEROL_NORM_MG_DAY,
+        "target_mds_g_day": {
+            "min": round(target_mds_g_day, 2),
+            "max": round(target_energy_kcal_day * (mds_max_pct_ev / 100.0) / 4.0, 2) if target_energy_kcal_day > 0 else 0.0,
+            "min_pct_ev": round(mds_min_pct_ev, 2),
+            "max_pct_ev": round(mds_max_pct_ev, 2),
+        },
+
+        "target_fat_acids_day": {
+            "nlc_g": target_nlc_g_day,
+            "pufa_g": target_pufa_g_day,
+        },
+
+        "target_cholesterol_mg_day": round(
+            fat_acid_norms.get("cholesterol_mg", ADULT_CHOLESTEROL_NORM_MG_DAY), 2
+        ),
 
         "target_vitamins_day": vitamin_norms,
         "target_minerals_day": {
@@ -180,6 +235,7 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
                 or ADULT_SODIUM_NORM_MG_DAY
             ),
         },
+        "target_other_nutrients_day": other_nutrient_norms,
 
         "debug": {
             "work_group_id": profile.work_group_id,

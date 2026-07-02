@@ -568,6 +568,7 @@ class RecommendationsView(APIView):
         subtype_id = payload.get("subtype_id")
         comparison_mode = str(payload.get("comparison_mode") or "subgroup").strip()
         local_products = payload.get("local_products") or None
+        selected_product_ids = payload.get("selected_product_ids") or None
 
         profile = get_object_or_404(ConsumerProfile, pk=int(profile_id), user=request.user)
         active_goal_exists = ConsumerGoal.objects.filter(
@@ -591,6 +592,7 @@ class RecommendationsView(APIView):
             subtype_id=int(subtype_id) if subtype_id else None,
             comparison_mode=comparison_mode,
             local_products=local_products,
+            selected_product_ids=selected_product_ids,
         )
         return Response(data)
 

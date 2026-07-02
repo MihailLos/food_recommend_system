@@ -619,6 +619,10 @@ class MacronutrientsNormsMR(models.Model):
     carbs_g = models.IntegerField(db_column="carbs, g")
     dietary_fibers_min_g = models.IntegerField(db_column="dietary_fibers_min, g")
     dietary_fibers_max_g = models.IntegerField(db_column="dietary_fibers_max, g")
+    water_min_g = models.FloatField(db_column="water_min_g", null=True, blank=True)
+    water_max_g = models.FloatField(db_column="water_max_g", null=True, blank=True)
+    mds_min_g_ev = models.IntegerField(db_column="mds_min_g_%%EV", null=True, blank=True)
+    mds_max_g_ev = models.IntegerField(db_column="mds_max_g_%%EV", null=True, blank=True)
 
     class Meta:
         managed = False
@@ -651,3 +655,23 @@ class MineralsNormsMR(models.Model):
     class Meta:
         managed = False
         db_table = 'Minerals_Norms_MR'
+
+
+class OtherNutrientsNormsMR(models.Model):
+    id = models.IntegerField(primary_key=True, db_column="ID")
+    organic_acids_g = models.FloatField(db_column="Organic_Acids_g", null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = "Other_Nutrients_Norms_MR"
+
+
+class FatAcidsNormsMR(models.Model):
+    id = models.IntegerField(primary_key=True, db_column="ID")
+    nlc_g_ev = models.FloatField(db_column="NLC_g_%%EV", null=True, blank=True)
+    pufa_g_ev = models.FloatField(db_column="PUFA_g_%%EV", null=True, blank=True)
+    cholesterol_mg = models.FloatField(db_column="cholesterol_mg", null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = "Fat_Acids_Norms_MR"
