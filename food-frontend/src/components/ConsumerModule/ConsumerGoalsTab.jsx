@@ -168,7 +168,7 @@ function NutrientChips({ codes, nutrientMeta, onRemove, color, onDropCode, dragT
           if (code) onDropCode(code);
         }}
         style={{
-          minHeight: 72,
+          minHeight: 56,
           border: "1px dashed #d8d8d8",
           borderRadius: 10,
           padding: 10,
@@ -197,7 +197,14 @@ function NutrientChips({ codes, nutrientMeta, onRemove, color, onDropCode, dragT
         const code = event.dataTransfer.getData("text/plain");
         if (code) onDropCode(code);
       }}
-      style={{ display: "flex", flexWrap: "wrap", gap: 8, minHeight: 72 }}
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "flex-start",
+        alignContent: "flex-start",
+        gap: 8,
+        minHeight: 56,
+      }}
     >
       {codes.map((code) => (
         <div
@@ -211,9 +218,11 @@ function NutrientChips({ codes, nutrientMeta, onRemove, color, onDropCode, dragT
             border: `1px solid ${color}`,
             background: "#fff",
             fontSize: 13,
+            lineHeight: 1.2,
+            maxWidth: "100%",
           }}
         >
-          <span>{nutrientMeta(code)?.ru_name || code}</span>
+          <span style={{ whiteSpace: "nowrap" }}>{nutrientMeta(code)?.ru_name || code}</span>
           <button
             type="button"
             onClick={() => onRemove(code)}
@@ -626,8 +635,15 @@ export default function ConsumerGoalsTab({ profileId }) {
           покрытия, лимитной нагрузки и итоговой приоритетности продукта.
         </InfoText>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
-          <div style={{ border: "1px solid #d8ead7", borderRadius: 12, padding: 12, display: "grid", gap: 10 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(320px, 0.9fr)",
+            gap: 12,
+            alignItems: "start",
+          }}
+        >
+          <div style={{ border: "1px solid #d8ead7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
             <div style={{ fontWeight: 700, color: "#2e7d32" }}>Пищевые вещества покрытия</div>
             <NutrientChips
               codes={coverageCodes}
@@ -639,7 +655,7 @@ export default function ConsumerGoalsTab({ profileId }) {
               direction="coverage"
             />
           </div>
-          <div style={{ border: "1px solid #f1d7d7", borderRadius: 12, padding: 12, display: "grid", gap: 10 }}>
+          <div style={{ border: "1px solid #f1d7d7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
             <div style={{ fontWeight: 700, color: "#c62828" }}>Пищевые вещества лимитной нагрузки</div>
             <NutrientChips
               codes={limitCodes}
@@ -651,7 +667,18 @@ export default function ConsumerGoalsTab({ profileId }) {
               direction="limit"
             />
           </div>
-          <div style={{ border: "1px dashed #c8d0d8", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
+          <div
+            style={{
+              border: "1px dashed #c8d0d8",
+              borderRadius: 12,
+              padding: 12,
+              display: "grid",
+              gap: 10,
+              alignContent: "start",
+              maxHeight: 520,
+              overflow: "auto",
+            }}
+          >
             <div style={{ fontWeight: 700 }}>Доступные пищевые вещества</div>
             <InfoText>Перетащи вещество в один из списков слева.</InfoText>
             {unassignedNutrients.length === 0 ? (
