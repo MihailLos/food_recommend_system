@@ -81,6 +81,7 @@ const comparisonOptions = [
   { value: "global", label: "Вся база продуктов" },
   { value: "type", label: "Отдельная группа продуктов" },
   { value: "subgroup", label: "Отдельная подгруппа продуктов" },
+  { value: "selected", label: "Свободный выбор продуктов" },
 ];
 
 function normalizeList(data) {
@@ -103,13 +104,13 @@ function fmtPercent(value) {
 function levelMeta(level) {
   const code = level?.code || "";
   if (code === "high") {
-    return { bg: "rgba(46,125,50,0.10)", border: "#2e7d32", text: level?.label || "Высокий" };
+    return { bg: "rgba(30, 96, 217, 0.18)", border: "#1e60d9", text: level?.label || "Высокий" };
   }
   if (code === "medium") {
-    return { bg: "rgba(249,168,37,0.12)", border: "#f9a825", text: level?.label || "Средний" };
+    return { bg: "rgba(84, 141, 255, 0.16)", border: "#548dff", text: level?.label || "Средний" };
   }
   if (code === "low") {
-    return { bg: "rgba(229,57,53,0.10)", border: "#e53935", text: level?.label || "Низкий" };
+    return { bg: "rgba(193, 221, 255, 0.8)", border: "#8bbcff", text: level?.label || "Низкий" };
   }
   return { bg: "#f5f5f5", border: "#bbb", text: "—" };
 }
@@ -117,13 +118,13 @@ function levelMeta(level) {
 function limitLevelMeta(level) {
   const code = level?.code || "";
   if (code === "low") {
-    return { bg: "rgba(46,125,50,0.10)", border: "#2e7d32", text: level?.label || "Низкий" };
+    return { bg: "rgba(255, 233, 206, 0.95)", border: "#ffbf66", text: level?.label || "Низкий" };
   }
   if (code === "medium") {
-    return { bg: "rgba(249,168,37,0.12)", border: "#f9a825", text: level?.label || "Средний" };
+    return { bg: "rgba(255, 188, 92, 0.18)", border: "#ff9f1a", text: level?.label || "Средний" };
   }
   if (code === "high") {
-    return { bg: "rgba(229,57,53,0.10)", border: "#e53935", text: level?.label || "Высокий" };
+    return { bg: "rgba(255, 136, 0, 0.22)", border: "#f57c00", text: level?.label || "Высокий" };
   }
   return { bg: "#f5f5f5", border: "#bbb", text: "—" };
 }
@@ -343,6 +344,13 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const [searchText, setSearchText] = useState("");
   const [typeId, setTypeId] = useState("");
   const [subtypeId, setSubtypeId] = useState("");
+  const [selectionTypeId, setSelectionTypeId] = useState("");
+  const [selectionSubtypeId, setSelectionSubtypeId] = useState("");
+  const [selectionSearch, setSelectionSearch] = useState("");
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const [sortBy, setSortBy] = useState("score_percent_100");
+  const [sortDirection, setSortDirection] = useState("desc");
   const [types, setTypes] = useState([]);
   const [subtypes, setSubtypes] = useState([]);
   const [payload, setPayload] = useState(null);
@@ -358,16 +366,22 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     return Number.isFinite(value) && value > 0 ? value : null;
   }, [profileId]);
 
-  const items = useMemo(() => normalizeList(payload?.items ?? payload), [payload]);
+  const rawItems = useMemo(() => normalizeList(payload?.items ?? payload), [payload]);
 
   const filteredSubtypes = useMemo(() => {
     if (!typeId) return subtypes;
     return subtypes.filter((item) => Number(item?.product_type || item?.product_type_id || item?.type_id || item?.product_type?.id) === Number(typeId));
   }, [subtypes, typeId]);
 
+  const selectionFilteredSubtypes = useMemo(() => {
+    if (!selectionTypeId) return subtypes;
+    return subtypes.filter((item) => Number(item?.product_type || item?.product_type_id || item?.type_id || item?.product_type?.id) === Number(selectionTypeId));
+  }, [selectionTypeId, subtypes]);
+
   const ensureLocalCatalog = useCallback(async () => {
     const localItems = await getAllProducts(catalogScope);
     if (Array.isArray(localItems) && localItems.length > 0) {
+      setCatalogProducts(localItems);
       return localItems;
     }
 
@@ -377,8 +391,13 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     if (exported.version) {
       await setLocalVersion(catalogScope, exported.version);
     }
+    setCatalogProducts(normalizedItems);
     return normalizedItems;
   }, [catalogScope]);
+
+  useEffect(() => {
+    ensureLocalCatalog().catch(() => {});
+  }, [ensureLocalCatalog]);
 
   useEffect(() => {
     let cancelled = false;
@@ -426,8 +445,48 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     if (comparisonMode === "subgroup" && !subtypeId) {
       return "Для сравнения по подгруппе сначала выберите подгруппу продуктов.";
     }
+    if (comparisonMode === "selected" && selectedProducts.length === 0) {
+      return "Для свободного выбора сначала добавьте продукты в множество сравнения.";
+    }
     return "";
-  }, [comparisonMode, subtypeId, typeId]);
+  }, [comparisonMode, selectedProducts.length, subtypeId, typeId]);
+
+  const searchSuggestions = useMemo(() => {
+    const search = String(selectionSearch || "").trim().toLowerCase();
+    let pool = catalogProducts;
+    if (selectionTypeId) {
+      pool = pool.filter((item) => String(item?.typeId ?? item?.type_id ?? "") === String(selectionTypeId));
+    }
+    if (selectionSubtypeId) {
+      pool = pool.filter((item) => String(item?.subtypeId ?? item?.subtype_id ?? "") === String(selectionSubtypeId));
+    }
+    if (search) {
+      pool = pool.filter((item) => String(item?.name || "").toLowerCase().includes(search));
+    }
+    const selectedIds = new Set(selectedProducts.map((item) => Number(item.id)));
+    return pool
+      .filter((item) => !selectedIds.has(Number(item.id)))
+      .slice(0, 20);
+  }, [catalogProducts, selectedProducts, selectionSearch, selectionSubtypeId, selectionTypeId]);
+
+  const items = useMemo(() => {
+    const data = [...rawItems];
+    const valueFor = (item) => {
+      const score = item?.score_components || {};
+      if (sortBy === "coverage_percent_100") return Number(score.coverage_percent_100 ?? -1);
+      if (sortBy === "limit_percent_100") return Number(score.limit_percent_100 ?? -1);
+      return Number(score.score_percent_100 ?? -1);
+    };
+    data.sort((left, right) => {
+      const leftValue = valueFor(left);
+      const rightValue = valueFor(right);
+      if (leftValue !== rightValue) {
+        return sortDirection === "asc" ? leftValue - rightValue : rightValue - leftValue;
+      }
+      return String(left?.product?.name || "").localeCompare(String(right?.product?.name || ""), "ru");
+    });
+    return data;
+  }, [rawItems, sortBy, sortDirection]);
 
   const loadRecommendations = useCallback(async () => {
     if (!profileIdNum) return;
@@ -459,6 +518,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         subtypeId: subtypeId || null,
         limit: 500,
         localProducts: localPayload,
+        selectedProductIds: comparisonMode === "selected" ? selectedProducts.map((item) => Number(item.id)) : null,
       });
 
       stopProgress();
@@ -472,7 +532,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     } finally {
       setLoading(false);
     }
-  }, [comparisonMode, ensureLocalCatalog, profileIdNum, searchText, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
+  }, [comparisonMode, ensureLocalCatalog, profileIdNum, searchText, selectedProducts, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -493,8 +553,33 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       const subgroup = subtypes.find((item) => String(item.id) === String(subtypeId));
       return subgroup ? `подгруппа «${subgroup.name}»` : "выбранная подгруппа";
     }
+    if (comparisonMode === "selected") {
+      return "выбранные пользователем продукты";
+    }
     return "—";
   }, [comparisonMode, subtypeId, subtypes, typeId, types]);
+
+  const addSelectedProduct = (product) => {
+    setSelectedProducts((prev) => (prev.some((item) => Number(item.id) === Number(product.id)) ? prev : [...prev, product]));
+  };
+
+  const removeSelectedProduct = (productId) => {
+    setSelectedProducts((prev) => prev.filter((item) => Number(item.id) !== Number(productId)));
+  };
+
+  const sortLabel = (field, label) => {
+    if (sortBy !== field) return label;
+    return `${label} ${sortDirection === "asc" ? "↑" : "↓"}`;
+  };
+
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(field);
+    setSortDirection("desc");
+  };
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -559,6 +644,12 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                   }
                   if (nextMode !== "subgroup") {
                     setSubtypeId("");
+                  }
+                  if (nextMode !== "selected") {
+                    setSelectionTypeId("");
+                    setSelectionSubtypeId("");
+                    setSelectionSearch("");
+                    setSelectedProducts([]);
                   }
                 }}
               >
@@ -629,6 +720,113 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
               </>
             )}
 
+            {comparisonMode === "selected" && (
+              <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(320px, 0.8fr)", gap: 12 }}>
+                <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, display: "grid", gap: 10 }}>
+                  <div style={{ fontWeight: 700 }}>Добавить продукты в множество сравнения</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                    <select
+                      style={input}
+                      value={selectionTypeId}
+                      onChange={(event) => {
+                        setSelectionTypeId(event.target.value);
+                        setSelectionSubtypeId("");
+                      }}
+                    >
+                      <option value="">Все группы</option>
+                      {types.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      style={input}
+                      value={selectionSubtypeId}
+                      onChange={(event) => setSelectionSubtypeId(event.target.value)}
+                      disabled={!selectionTypeId}
+                    >
+                      <option value="">{selectionTypeId ? "Все подгруппы" : "Сначала выберите группу"}</option>
+                      {selectionFilteredSubtypes.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      style={input}
+                      value={selectionSearch}
+                      onChange={(event) => setSelectionSearch(event.target.value)}
+                      placeholder="Поиск по названию"
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gap: 8, maxHeight: 280, overflow: "auto" }}>
+                    {searchSuggestions.length === 0 ? (
+                      <div style={{ fontSize: 13, color: "#666" }}>Подходящие продукты не найдены.</div>
+                    ) : (
+                      searchSuggestions.map((product) => (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => addSelectedProduct(product)}
+                          style={{
+                            ...btn,
+                            textAlign: "left",
+                            display: "grid",
+                            gap: 4,
+                            padding: "10px 12px",
+                          }}
+                        >
+                          <div style={{ fontWeight: 600 }}>{product.name}</div>
+                          <div style={{ fontSize: 12, color: "#666" }}>
+                            {product.subtypeName || product.typeName || "Без подгруппы"}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
+                  <div style={{ fontWeight: 700 }}>Текущее множество сравнения</div>
+                  <div style={{ fontSize: 12, color: "#666" }}>
+                    Выбрано продуктов: {selectedProducts.length}
+                  </div>
+                  <div style={{ display: "grid", gap: 8, maxHeight: 280, overflow: "auto" }}>
+                    {selectedProducts.length === 0 ? (
+                      <div style={{ fontSize: 13, color: "#666" }}>Список пока пуст.</div>
+                    ) : (
+                      selectedProducts.map((product) => (
+                        <div
+                          key={product.id}
+                          style={{
+                            border: "1px solid #ddd",
+                            borderRadius: 10,
+                            padding: "10px 12px",
+                            display: "grid",
+                            gridTemplateColumns: "1fr auto",
+                            gap: 8,
+                            alignItems: "start",
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{product.name}</div>
+                            <div style={{ fontSize: 12, color: "#666" }}>
+                              {product.subtypeName || product.typeName || "Без подгруппы"}
+                            </div>
+                          </div>
+                          <button type="button" style={btn} onClick={() => removeSelectedProduct(product.id)}>
+                            Убрать
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "grid", gap: 6 }}>
               <label>Поиск по названию</label>
               <input
@@ -651,6 +849,10 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                 setComparisonMode("");
                 setTypeId("");
                 setSubtypeId("");
+                setSelectionTypeId("");
+                setSelectionSubtypeId("");
+                setSelectionSearch("");
+                setSelectedProducts([]);
                 setSearchText("");
                 setPayload(null);
                 setSelectedItem(null);
@@ -690,11 +892,23 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
-                  {["Продукт", "Уровень покрытия", "Уровень лимитной нагрузки", "Итоговая оценка приоритетности", ""].map((label) => (
-                    <th key={label} style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
-                      {label}
-                    </th>
-                  ))}
+                  <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>Продукт</th>
+                  <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
+                    <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("coverage_percent_100")}>
+                      {sortLabel("coverage_percent_100", "Уровень покрытия")}
+                    </button>
+                  </th>
+                  <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
+                    <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("limit_percent_100")}>
+                      {sortLabel("limit_percent_100", "Уровень лимитной нагрузки")}
+                    </button>
+                  </th>
+                  <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }}>
+                    <button type="button" style={{ ...btn, padding: 0, border: "none", background: "transparent", fontWeight: 700 }} onClick={() => toggleSort("score_percent_100")}>
+                      {sortLabel("score_percent_100", "Итоговая оценка приоритетности")}
+                    </button>
+                  </th>
+                  <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #eee" }} />
                 </tr>
               </thead>
               <tbody>
