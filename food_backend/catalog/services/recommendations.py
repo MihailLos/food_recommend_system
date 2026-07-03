@@ -377,8 +377,19 @@ def _compute_quartiles(values: List[float]) -> Tuple[Optional[float], Optional[f
     def pick(p: float) -> float:
         if n == 1:
             return ordered[0]
-        index = round((n - 1) * p)
-        return ordered[index]
+        position = (n + 1) * p
+        if position <= 1:
+            return ordered[0]
+        if position >= n:
+            return ordered[-1]
+
+        lower_index = int(position) - 1
+        fraction = position - int(position)
+        lower_value = ordered[lower_index]
+        upper_value = ordered[lower_index + 1]
+        if fraction == 0:
+            return lower_value
+        return lower_value + fraction * (upper_value - lower_value)
 
     return pick(0.25), pick(0.5), pick(0.75)
 
@@ -433,21 +444,28 @@ def _build_rank_percent_map(values_by_product: Dict[int, float], invert: bool = 
     return result
 
 
-def _percentile_to_quartile_score(percentile_q: float) -> int:
-    if percentile_q < 0.25:
+def _quartile_bounds_to_score(
+    value: Optional[float],
+    qua1: Optional[float],
+    qua2: Optional[float],
+    qua3: Optional[float],
+) -> Optional[int]:
+    if value is None or qua1 is None or qua2 is None or qua3 is None:
+        return None
+    if value <= qua1:
         return 1
-    if percentile_q < 0.50:
+    if value <= qua2:
         return 2
-    if percentile_q < 0.75:
+    if value <= qua3:
         return 3
     return 4
 
 
-def _compute_signal_strength(percentile_q: Optional[float]) -> Tuple[str, str]:
-    value = float(percentile_q or 0.0)
-    if value >= 0.75:
+def _compute_signal_strength(quartile_score: Optional[int]) -> Tuple[str, str]:
+    value = int(quartile_score or 0)
+    if value >= 4:
         return "strong", "сильное"
-    if value >= 0.50:
+    if value >= 3:
         return "moderate", "умеренное"
     return "weak", "слабое"
 
@@ -482,7 +500,7 @@ def _build_signal(
     daily_share = None
     if value_100g is not None and target_day not in (None, 0):
         daily_share = float(value_100g) / float(target_day)
-    score_code, score_label = _compute_signal_strength(percentile_q)
+    score_code, score_label = _compute_signal_strength(quartile_score)
     return {
         "code": code,
         "ru_name": nd.ru_name,
@@ -628,10 +646,12 @@ def _build_score_maps_for_pool(
                 values_by_product[product_id] = float(raw_value)
 
         percentile_map = _build_percentile_map(values_by_product)
+        qua1, qua2, qua3 = _compute_quartiles(list(values_by_product.values()))
         percentile_maps[code] = percentile_map
         quartile_score_maps[code] = {
-            product_id: _percentile_to_quartile_score(percentile_q)
-            for product_id, percentile_q in percentile_map.items()
+            product_id: _quartile_bounds_to_score(value, qua1, qua2, qua3)
+            for product_id, value in values_by_product.items()
+            if _quartile_bounds_to_score(value, qua1, qua2, qua3) is not None
         }
 
     return percentile_maps, quartile_score_maps
@@ -1104,7 +1124,7 @@ def recommend(
                 "method": {
                     "basis": "coverage_minus_limit_quartile_model",
                     "percentile_formula": "Q = (count_less + 0.5 * count_equal) / count_known",
-                    "nutrient_score_formula": "quartile_score = 1..4 by percentile position inside comparison set",
+                    "nutrient_score_formula": "quartile_score = 1..4 by direct comparison of nutrient share with Qua1/Qua2/Qua3 inside comparison set",
                     "coverage_formula": "coverage_sum = sum(quartile_score for preferred nutrients)",
                     "limit_formula": "limit_sum = sum(quartile_score for restricted nutrients)",
                     "category_formula": "category_adjustment = +/- scope_weight, where subtype=2 and type=1",
