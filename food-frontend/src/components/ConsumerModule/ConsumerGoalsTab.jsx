@@ -92,7 +92,10 @@ function sanitizeGuidanceCodes(codes) {
   return (codes || []).filter((code) => !HIDDEN_NUTRIENT_CODES.has(code));
 }
 
-function formatUnit(unit) {
+const MILLIGRAM_EQUIVALENT_CODES = new Set(["retinol_index", "tocopherol_index", "niacin_index"]);
+
+function formatUnit(unit, code = "") {
+  if (MILLIGRAM_EQUIVALENT_CODES.has(code)) return "миллиграммы (мг)";
   if (!unit) return "—";
   if (unit === "g") return "граммы (г)";
   if (unit === "mg") return "миллиграммы (мг)";
@@ -514,7 +517,7 @@ export default function ConsumerGoalsTab({ profileId }) {
           .map((code) => ({
             code,
             label: nutrientMeta(code)?.ru_name || code,
-            unit: formatUnit(nutrientMeta(code)?.unit || ""),
+            unit: formatUnit(nutrientMeta(code)?.unit || "", code),
             value: targetValues[code] ?? "",
             overridden: overrideCodes.has(code),
           })),
@@ -771,7 +774,37 @@ export default function ConsumerGoalsTab({ profileId }) {
                     style={dragItemStyles}
                   >
                     <div style={{ fontWeight: 600 }}>{item.ru_name}</div>
-                    <div style={{ fontSize: 11, color: "#666" }}>{formatUnit(item.unit)}</div>
+                    <div style={{ fontSize: 11, color: "#666" }}>{formatUnit(item.unit, item.code)}</div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <button
+                        type="button"
+                        style={{
+                          ...btn,
+                          padding: "6px 10px",
+                          borderColor: "#2e7d32",
+                          color: "#2e7d32",
+                          fontWeight: 700,
+                        }}
+                        onClick={() => assignCode(item.code, "coverage")}
+                        title="Добавить в пищевые вещества покрытия"
+                      >
+                        + Покрытие
+                      </button>
+                      <button
+                        type="button"
+                        style={{
+                          ...btn,
+                          padding: "6px 10px",
+                          borderColor: "#c62828",
+                          color: "#c62828",
+                          fontWeight: 700,
+                        }}
+                        onClick={() => assignCode(item.code, "limit")}
+                        title="Добавить в пищевые вещества лимитной нагрузки"
+                      >
+                        + Лимит
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
