@@ -12,6 +12,7 @@ from catalog.models import (
     VitaminsNormsMR,
 )
 from catalog.utils.energy_calc import calculate_tdee_for_profile
+from catalog.utils.energy_calc import calculate_bmi
 
 ADULT_SODIUM_NORM_MG_DAY = 1300.0
 ADULT_CHOLESTEROL_NORM_MG_DAY = 300.0
@@ -278,6 +279,7 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
 
     payload = {
         "profile_id": profile.id,
+        "bmi": calculate_bmi(profile.height_cm, float(profile.weight_kg)),
 
         "goal_id": goal.id if goal else None,
         "goal_type": goal.goal_type if goal else None,

@@ -81,6 +81,19 @@ const TARGET_SECTIONS = [
   },
 ];
 
+const BMI_GUIDANCE_PRESETS = {
+  underweight: {
+    energyHint: "По текущему ИМТ стоит рассмотреть увеличение значения в поле изменения расчетного суточного расхода энергии.",
+    coverageCodes: ["protein_g", "pufa_g", "ca_mg", "fe_mg", "b1_mg", "b2_mg", "pp_mg"],
+    limitCodes: [],
+  },
+  overweight: {
+    energyHint: "По текущему ИМТ стоит рассмотреть уменьшение значения в поле изменения расчетного суточного расхода энергии.",
+    coverageCodes: ["dietary_fiber_g", "water_g", "pufa_g"],
+    limitCodes: ["mds_g", "nlc_g", "na_mg"],
+  },
+};
+
 function round2(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 0;
@@ -163,6 +176,41 @@ function flattenTargets(targets) {
 
 function InfoText({ children }) {
   return <div style={{ fontSize: 13, color: "#555", lineHeight: 1.55 }}>{children}</div>;
+}
+
+function SuggestionList({ title, codes, nutrientMeta, color, actionLabel, onApply }) {
+  if (!codes.length) return null;
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color }}>{title}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {codes.map((code) => (
+          <span
+            key={code}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              border: `1px solid ${color}33`,
+              background: "#fff",
+              fontSize: 12,
+            }}
+          >
+            {nutrientMeta(code)?.ru_name || code}
+          </span>
+        ))}
+      </div>
+      <div>
+        <button
+          type="button"
+          style={{ ...btn, borderColor: color, color, fontWeight: 700 }}
+          onClick={() => onApply(codes)}
+        >
+          {actionLabel}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function NutrientList({ codes, nutrientMeta, onRemove, color, onDropCode, dragTarget, direction }) {
@@ -305,6 +353,18 @@ export default function ConsumerGoalsTab({ profileId }) {
     const tdee = Number(targets?.energy_calc?.tdee_kcal_day || 0);
     return round2(Math.max(0, tdee + Number(energyDeltaKcal || 0)));
   }, [energyDeltaKcal, targets]);
+
+  const bmiValue = useMemo(() => {
+    const value = Number(targets?.bmi);
+    return Number.isFinite(value) ? value : null;
+  }, [targets]);
+
+  const bmiGuidance = useMemo(() => {
+    if (bmiValue == null) return null;
+    if (bmiValue < 18.5) return BMI_GUIDANCE_PRESETS.underweight;
+    if (bmiValue < 25) return null;
+    return BMI_GUIDANCE_PRESETS.overweight;
+  }, [bmiValue]);
 
   const defaultCoverageCodes = useMemo(
     () => sanitizeGuidanceCodes(targets?.guidance_meta?.default_coverage_codes || []),
@@ -513,6 +573,26 @@ export default function ConsumerGoalsTab({ profileId }) {
     setLimitCodes(defaultLimitCodes);
   };
 
+  const addCodesToCoverage = (codes) => {
+    setCoverageCodes((prev) => [...prev, ...codes.filter((code) => !prev.includes(code))]);
+    setLimitCodes((prev) => prev.filter((code) => !codes.includes(code)));
+  };
+
+  const addCodesToLimit = (codes) => {
+    setLimitCodes((prev) => [...prev, ...codes.filter((code) => !prev.includes(code))]);
+    setCoverageCodes((prev) => prev.filter((code) => !codes.includes(code)));
+  };
+
+  const missingCoverageSuggestionCodes = useMemo(
+    () => (bmiGuidance?.coverageCodes || []).filter((code) => !coverageCodes.includes(code)),
+    [bmiGuidance, coverageCodes]
+  );
+
+  const missingLimitSuggestionCodes = useMemo(
+    () => (bmiGuidance?.limitCodes || []).filter((code) => !limitCodes.includes(code)),
+    [bmiGuidance, limitCodes]
+  );
+
   const renderedSections = useMemo(
     () =>
       TARGET_SECTIONS.map((section) => ({
@@ -613,6 +693,20 @@ export default function ConsumerGoalsTab({ profileId }) {
             <InfoText>
               Если специалист рекомендовал дефицит или профицит энергии, задай величину здесь, а направление выбери кнопками «−» или «+».
             </InfoText>
+            {bmiGuidance?.energyHint && (
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: "#f7f9fc",
+                  border: "1px solid #dce5ef",
+                  fontSize: 13,
+                  color: "#334",
+                }}
+              >
+                {bmiGuidance.energyHint}
+              </div>
+            )}
           </div>
 
           <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
@@ -678,6 +772,44 @@ export default function ConsumerGoalsTab({ profileId }) {
           Здесь задаются списки веществ покрытия и веществ лимитной нагрузки. Они напрямую влияют на расчет
           покрытия, лимитной нагрузки и итоговой приоритетности продукта.
         </InfoText>
+        {bmiGuidance && (
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              padding: 12,
+              borderRadius: 12,
+              background: "#fafbfd",
+              border: "1px solid #dde5ee",
+            }}
+          >
+            <div style={{ fontWeight: 700 }}>Рекомендации по ИМТ</div>
+            <InfoText>
+              Система может помочь быстро добавить пищевые вещества, которые стоит учитывать при текущем ИМТ. Применение остается за пользователем.
+            </InfoText>
+            <SuggestionList
+              title="Рекомендуется добавить в пищевые вещества покрытия"
+              codes={missingCoverageSuggestionCodes}
+              nutrientMeta={nutrientMeta}
+              color="#2e7d32"
+              actionLabel="Добавить в покрытие"
+              onApply={addCodesToCoverage}
+            />
+            <SuggestionList
+              title="Рекомендуется добавить в пищевые вещества лимитной нагрузки"
+              codes={missingLimitSuggestionCodes}
+              nutrientMeta={nutrientMeta}
+              color="#c62828"
+              actionLabel="Добавить в лимитную нагрузку"
+              onApply={addCodesToLimit}
+            />
+            {!missingCoverageSuggestionCodes.length && !missingLimitSuggestionCodes.length && (
+              <div style={{ fontSize: 13, color: "#556" }}>
+                Все рекомендуемые для текущего ИМТ пищевые вещества уже включены.
+              </div>
+            )}
+          </div>
+        )}
 
         <div
           style={{
