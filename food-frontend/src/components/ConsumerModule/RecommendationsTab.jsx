@@ -860,9 +860,19 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                   display: "grid",
                   gridTemplateColumns: isCompactLayout ? "1fr" : "minmax(0, 1.2fr) minmax(320px, 0.8fr)",
                   gap: 12,
+                  alignItems: "start",
                 }}
               >
-                <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, display: "grid", gap: 10 }}>
+                <div
+                  style={{
+                    border: "1px solid #eee",
+                    borderRadius: 12,
+                    padding: 12,
+                    display: "grid",
+                    gap: 10,
+                    gridTemplateRows: "auto auto minmax(280px, 280px)",
+                  }}
+                >
                   <div style={{ fontWeight: 700 }}>Добавить продукты в множество сравнения</div>
                   <div style={{ display: "grid", gridTemplateColumns: isCompactLayout ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 8 }}>
                     <select
@@ -901,39 +911,66 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                     />
                   </div>
 
-                  <div style={{ display: "grid", gap: 8, maxHeight: 280, overflow: "auto" }}>
+                  <div style={{ display: "grid", gap: 8, minHeight: 0, overflow: "auto", alignContent: "start" }}>
                     {searchSuggestions.length === 0 ? (
                       <div style={{ fontSize: 13, color: "#666" }}>Подходящие продукты не найдены.</div>
                     ) : (
                       searchSuggestions.map((product) => (
-                        <button
+                        <div
                           key={product.id}
-                          type="button"
-                          onClick={() => addSelectedProduct(product)}
                           style={{
-                            ...btn,
-                            textAlign: "left",
                             display: "grid",
-                            gap: 4,
+                            gridTemplateColumns: "1fr auto",
+                            alignItems: "center",
+                            gap: 10,
                             padding: "10px 12px",
+                            border: "1px solid #ddd",
+                            borderRadius: 10,
+                            background: "#fff",
                           }}
                         >
-                          <div style={{ fontWeight: 600 }}>{product.name}</div>
-                          <div style={{ fontSize: 12, color: "#666" }}>
-                            {product.subtypeName || product.typeName || "Без подгруппы"}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600 }}>{product.name}</div>
+                            <div style={{ fontSize: 12, color: "#666" }}>
+                              {product.subtypeName || product.typeName || "Без подгруппы"}
+                            </div>
                           </div>
-                        </button>
+                          <button
+                            type="button"
+                            style={{
+                              ...btn,
+                              borderColor: "#2e7d32",
+                              color: "#2e7d32",
+                              fontWeight: 700,
+                              whiteSpace: "nowrap",
+                            }}
+                            onClick={() => addSelectedProduct(product)}
+                            disabled={selectedProducts.some((item) => Number(item.id) === Number(product.id))}
+                          >
+                            {selectedProducts.some((item) => Number(item.id) === Number(product.id)) ? "Добавлено" : "Добавить"}
+                          </button>
+                        </div>
                       ))
                     )}
                   </div>
                 </div>
 
-                <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start" }}>
+                <div
+                  style={{
+                    border: "1px solid #eee",
+                    borderRadius: 12,
+                    padding: 12,
+                    display: "grid",
+                    gap: 10,
+                    alignContent: "start",
+                    gridTemplateRows: "auto auto minmax(280px, 280px)",
+                  }}
+                >
                   <div style={{ fontWeight: 700 }}>Текущее множество сравнения</div>
                   <div style={{ fontSize: 12, color: "#666" }}>
                     Выбрано продуктов: {selectedProducts.length}
                   </div>
-                  <div style={{ display: "grid", gap: 8, maxHeight: 280, overflow: "auto" }}>
+                  <div style={{ display: "grid", gap: 8, minHeight: 0, overflow: "auto", alignContent: "start" }}>
                     {selectedProducts.length === 0 ? (
                       <div style={{ fontSize: 13, color: "#666" }}>Список пока пуст.</div>
                     ) : (
