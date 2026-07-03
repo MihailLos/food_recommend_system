@@ -40,17 +40,22 @@ const HIDDEN_NUTRIENT_CODES = new Set(["starch_g", "ash_g", "alcohol_pct"]);
 
 const TARGET_SECTIONS = [
   {
-    key: "macros",
-    title: "Суточные величины БЖУ",
-    description: "Значения используются как ориентир для расчета покрытия по макронутриентам.",
-    codes: ["protein_g", "fats_g", "carbs_g"],
+    key: "macronutrients",
+    title: "Макронутриенты",
+    description: "Значения этой группы используются как ориентиры по основным компонентам питания.",
+    codes: ["protein_g", "fats_g", "carbs_g", "dietary_fiber_g", "mds_g", "water_g"],
   },
   {
-    key: "vitamins_minerals",
-    title: "Витамины и минеральные вещества",
-    description: "Эти величины система использует при расчете покрытия пищевых веществ.",
+    key: "minerals",
+    title: "Минеральные вещества",
+    description: "Эти ориентиры используются при расчете покрытия и лимитной нагрузки по минеральным веществам.",
+    codes: ["na_mg", "ca_mg", "k_mg", "mg_mg", "p_mg", "fe_mg"],
+  },
+  {
+    key: "vitamins",
+    title: "Витамины",
+    description: "Эти ориентиры используются при расчете покрытия по витаминам и эквивалентам.",
     codes: [
-      "dietary_fiber_g",
       "a_mg",
       "beta_carotene_mg",
       "b1_mg",
@@ -60,18 +65,19 @@ const TARGET_SECTIONS = [
       "retinol_index",
       "tocopherol_index",
       "niacin_index",
-      "ca_mg",
-      "k_mg",
-      "mg_mg",
-      "p_mg",
-      "fe_mg",
     ],
   },
   {
-    key: "limits",
-    title: "Суточные лимиты",
-    description: "Чем выше расход этих лимитов у продукта, тем ниже его приоритет среди аналогов.",
-    codes: ["na_mg", "nlc_g", "mds_g", "cholesterol_g", "water_g", "pufa_g", "organic_acids_g"],
+    key: "fat_acids",
+    title: "Жирные кислоты",
+    description: "Здесь собраны ориентиры по жирнокислотному составу и холестерину.",
+    codes: ["nlc_g", "pufa_g", "cholesterol_g"],
+  },
+  {
+    key: "other",
+    title: "Другие нутриенты",
+    description: "Дополнительные ориентиры, которые не входят в основные группы выше.",
+    codes: ["organic_acids_g"],
   },
 ];
 
