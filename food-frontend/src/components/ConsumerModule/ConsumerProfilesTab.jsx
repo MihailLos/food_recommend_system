@@ -61,35 +61,6 @@ function getBmiMeta(bmi) {
   };
 }
 
-function getBmiGoalRecommendation(bmi) {
-  const value = Number(bmi);
-  if (!Number.isFinite(value)) {
-    return {
-      label: "Нет рекомендации",
-      reason: "Недостаточно данных для определения рекомендуемой цели питания.",
-    };
-  }
-
-  if (value < 18.5) {
-    return {
-      label: "Увеличение энергетической обеспеченности",
-      reason: "При недостаточной массе тела целесообразно рассматривать положительный энергетический баланс.",
-    };
-  }
-
-  if (value < 25) {
-    return {
-      label: "Поддержание массы",
-      reason: "При нормальном ИМТ базовой рекомендацией остаётся поддержание текущей массы тела.",
-    };
-  }
-
-  return {
-    label: "Снижение массы",
-    reason: "При избыточной массе тела и ожирении целесообразно рассматривать снижение массы тела.",
-  };
-}
-
 function HelpPopover({ title, children }) {
   const [open, setOpen] = React.useState(false);
 
@@ -344,7 +315,6 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
   );
 
   const bmiMeta = getBmiMeta(selected?.bmi);
-  const bmiGoalRecommendation = getBmiGoalRecommendation(selected?.bmi);
   const energy = selected?.energy || null;
 
   const normalizeList = (data) => {
@@ -853,12 +823,6 @@ export default function ConsumerProfilesTab({ selectedProfileId, onSelectProfile
                   >
                     {bmiMeta.label}
                   </span>
-                </div>
-                <div style={{ marginTop: 8, fontSize: 13, color: "#333" }}>
-                  <strong>Рекомендуемая цель питания:</strong> {bmiGoalRecommendation.label}
-                </div>
-                <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                  {bmiGoalRecommendation.reason}
                 </div>
               </div>
 
