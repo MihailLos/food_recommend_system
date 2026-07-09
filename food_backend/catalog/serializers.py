@@ -188,6 +188,11 @@ class RetailFoodProductComponentWriteSerializer(serializers.Serializer):
         allow_null=True,
     )
 
+    def validate_food_component_id(self, value):
+        if not FoodProducts.objects.filter(pk=value).exists():
+            raise serializers.ValidationError("Указан несуществующий базовый пищевой продукт.")
+        return value
+
 
 class RetailFoodProductAdditiveWriteSerializer(serializers.Serializer):
     food_additive_id = serializers.IntegerField()
@@ -199,6 +204,11 @@ class RetailFoodProductAdditiveWriteSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+
+    def validate_food_additive_id(self, value):
+        if not FoodAdditive.objects.filter(pk=value).exists():
+            raise serializers.ValidationError("Указана несуществующая пищевая добавка.")
+        return value
 
 
 class RetailFoodProductComponentSerializer(serializers.ModelSerializer):
@@ -316,6 +326,8 @@ class RetailFoodProductWriteSerializer(serializers.ModelSerializer):
         attrs = super().validate(attrs)
         fill_mode = attrs.get("nutrition_fill_mode", getattr(self.instance, "nutrition_fill_mode", None))
         related_food_product = attrs.get("related_food_product", getattr(self.instance, "related_food_product", None))
+        components = attrs.get("components")
+        additives = attrs.get("additives")
         if fill_mode in {
             RetailFoodProduct.NutritionFillMode.LABEL_PLUS_REFERENCE,
             RetailFoodProduct.NutritionFillMode.REFERENCE_ONLY,
@@ -323,6 +335,20 @@ class RetailFoodProductWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"related_food_product": "Нужно выбрать эталонный продукт, если включено заполнение из справочника."}
             )
+
+        if components is not None:
+            component_ids = [item["food_component_id"] for item in components]
+            if len(component_ids) != len(set(component_ids)):
+                raise serializers.ValidationError(
+                    {"components": "Один и тот же базовый пищевой продукт нельзя добавить в состав дважды."}
+                )
+
+        if additives is not None:
+            additive_ids = [item["food_additive_id"] for item in additives]
+            if len(additive_ids) != len(set(additive_ids)):
+                raise serializers.ValidationError(
+                    {"additives": "Одну и ту же пищевую добавку нельзя добавить в состав дважды."}
+                )
         return attrs
 
     def _replace_components(self, retail_product, components_data):
