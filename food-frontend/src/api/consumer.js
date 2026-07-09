@@ -90,6 +90,15 @@ export async function fetchNutrientsDictionary() {
   return client.get(`/api/nutrients-dictionary/`).then(r => r.data);
 }
 
+export async function fetchAvailableRecommendationNutrients(profileId, sourceMode = "reference_only") {
+  return client.get(`/api/consumer/recommendations/available-nutrients/`, {
+    params: {
+      profile: profileId,
+      source_mode: sourceMode,
+    },
+  }).then((r) => r.data);
+}
+
 export async function fetchFoodProductTypes() {
   return client.get("/api/types/").then((r) => r.data);
 }
@@ -101,6 +110,7 @@ export async function fetchFoodProductSubtypes() {
 export async function fetchRecommendations({
   profileId,
   mode = "catalog",
+  sourceMode = "reference_only",
   comparisonMode = "",
   cartId = null,
   limit = 50,
@@ -118,6 +128,7 @@ export async function fetchRecommendations({
   const payload = {
     profile: pid,
     mode: String(mode),
+    source_mode: String(sourceMode || "reference_only"),
     comparison_mode: String(comparisonMode || ""),
     limit,
   };

@@ -8,6 +8,7 @@ import FiltersPanel from "../components/FiltersPanel";
 import SortControl from "../components/SortControl";
 import AddProductModal from "../components/AddProductModal";
 import NutritionCalculatorModal from "../components/NutritionCalculatorModal";
+import RetailProductsPage from "./RetailProducts/RetailProductsPage";
 import { ALL_COLUMNS } from "../config/column";
 import { exportJsonToExcel } from "../utils/exportExcel";
 
@@ -59,6 +60,7 @@ function applySort(items, sort) {
 
 
 export default function ProductsPage({ catalogScope, isAuthenticated }) {
+  const [catalogView, setCatalogView] = useState("reference");
   // поиск по серверу как раньше
   const [search, setSearch] = useState("");
   const debounced = useDebounce(search, 300);
@@ -241,7 +243,7 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
 
   return (
     <div className="app-products-layout" data-sidebar={sidebarOpen ? "open" : "closed"}>
-      {isReloading && (
+      {catalogView === "reference" && isReloading && (
         <div
           style={{
             position: "fixed",
@@ -294,9 +296,51 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
           </div>
         </div>
       )}
-      {isMobileLayout && sidebarOpen && (
+      {catalogView === "reference" && isMobileLayout && sidebarOpen && (
         <div className="app-mobile-backdrop" onClick={() => setSidebarOpen(false)} />
       )}
+      <div
+        style={{
+          gridColumn: "1 / -1",
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          padding: "16px 16px 0",
+        }}
+      >
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setCatalogView("reference")}
+          style={{
+            borderColor: catalogView === "reference" ? "#2e7d32" : undefined,
+            background: catalogView === "reference" ? "rgba(46,125,50,0.08)" : undefined,
+            fontWeight: catalogView === "reference" ? 700 : 500,
+          }}
+        >
+          Эталонный справочник
+        </button>
+        {isAuthenticated && (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setCatalogView("retail")}
+            style={{
+              borderColor: catalogView === "retail" ? "#2e7d32" : undefined,
+              background: catalogView === "retail" ? "rgba(46,125,50,0.08)" : undefined,
+              fontWeight: catalogView === "retail" ? 700 : 500,
+            }}
+          >
+            Магазинные продукты
+          </button>
+        )}
+      </div>
+      {catalogView === "retail" && isAuthenticated ? (
+        <main className="app-products-main" style={{ gridColumn: "1 / -1" }}>
+          <RetailProductsPage catalogProducts={allItems} />
+        </main>
+      ) : (
+        <>
       {/* Сайдбар */}
       <aside className="app-products-sidebar" data-sidebar={sidebarOpen ? "open" : "closed"} aria-hidden={!sidebarOpen}>
         {/* Чтобы красиво прятать содержимое, оборачиваем в контейнер с opacity */}
@@ -536,6 +580,8 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
           </div>
         )}
       </main>
+        </>
+      )}
     </div>
   );
 }

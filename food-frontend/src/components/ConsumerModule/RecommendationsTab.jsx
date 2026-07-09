@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  fetchAvailableRecommendationNutrients,
   fetchFoodProductSubtypes,
   fetchFoodProductTypes,
   fetchRecommendations,
 } from "../../api/consumer";
 import { fetchCatalogExport } from "../../api/products";
+import { fetchRetailProducts } from "../../api/retailProducts";
 import { getAllProducts, replaceProducts, setLocalVersion } from "../../db/catalogDb";
 import { normalizeProduct } from "../../utils/normalize";
 
@@ -82,6 +84,12 @@ const comparisonOptions = [
   { value: "type", label: "Отдельная группа продуктов" },
   { value: "subgroup", label: "Отдельная подгруппа продуктов" },
   { value: "selected", label: "Свободный выбор продуктов" },
+];
+
+const sourceModeOptions = [
+  { value: "reference_only", label: "Только эталонный справочник" },
+  { value: "retail_only", label: "Только мои магазинные продукты" },
+  { value: "reference_plus_retail", label: "Эталонный справочник + мои магазинные продукты" },
 ];
 
 function normalizeList(data) {
@@ -268,6 +276,22 @@ const recommendationPayloadFields = [
   "organic_acids_g",
   "alcohol_pct",
 ];
+
+function normalizeRetailSelectionProduct(item, sourceMode = "retail_only") {
+  const recommendationId = sourceMode === "retail_only" ? -Math.abs(Number(item.id)) : -Math.abs(Number(item.id));
+  return {
+    id: item.id,
+    recommendationId,
+    sourceKind: "retail",
+    name: item.name,
+    typeId: item.related_food_group || null,
+    typeName: item.related_food_group_name || "",
+    subtypeId: item.related_food_subgroup || null,
+    subtypeName: item.related_food_subgroup_name || "",
+    status: item.status,
+    ready: Boolean(item.is_ready_for_recommendation),
+  };
+}
 
 function toRecommendationPayload(products) {
   if (!Array.isArray(products)) return [];
@@ -462,6 +486,7 @@ function DetailsModal({ item, onClose }) {
 }
 
 export default function RecommendationsTab({ profileId, catalogScope }) {
+  const [sourceMode, setSourceMode] = useState("reference_only");
   const [comparisonMode, setComparisonMode] = useState("");
   const [typeId, setTypeId] = useState("");
   const [subtypeId, setSubtypeId] = useState("");
@@ -470,6 +495,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const [selectionSearch, setSelectionSearch] = useState("");
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [catalogProducts, setCatalogProducts] = useState([]);
+  const [retailProducts, setRetailProducts] = useState([]);
+  const [availableNutrients, setAvailableNutrients] = useState([]);
+  const [availableNutrientsLoading, setAvailableNutrientsLoading] = useState(false);
   const [sortBy, setSortBy] = useState("score_percent_100");
   const [sortDirection, setSortDirection] = useState("desc");
   const [types, setTypes] = useState([]);
@@ -533,6 +561,24 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
 
   useEffect(() => {
     let cancelled = false;
+    fetchRetailProducts({ status: "ready" })
+      .then((data) => {
+        if (cancelled) return;
+        const items = normalizeList(data).filter((item) => item?.is_ready_for_recommendation);
+        setRetailProducts(items.map((item) => normalizeRetailSelectionProduct(item, sourceMode)));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRetailProducts([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceMode]);
+
+  useEffect(() => {
+    let cancelled = false;
     Promise.all([fetchFoodProductTypes(), fetchFoodProductSubtypes()])
       .then(([typesData, subtypesData]) => {
         if (cancelled) return;
@@ -549,6 +595,30 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!profileIdNum) return;
+    let cancelled = false;
+    setAvailableNutrientsLoading(true);
+    fetchAvailableRecommendationNutrients(profileIdNum, sourceMode)
+      .then((data) => {
+        if (cancelled) return;
+        setAvailableNutrients(normalizeList(data));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAvailableNutrients([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAvailableNutrientsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileIdNum, sourceMode]);
 
   const stopProgress = useCallback(() => {
     if (loadingTimerRef.current) {
@@ -568,6 +638,15 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   useEffect(() => () => stopProgress(), [stopProgress]);
 
   const validateFilters = useCallback(() => {
+    if (sourceMode === "retail_only" && retailProducts.length === 0) {
+      return "Нет готовых магазинных продуктов. Сначала добавьте их во вкладке магазинных продуктов.";
+    }
+    if (sourceMode === "reference_plus_retail" && retailProducts.length === 0) {
+      return "Для смешанного режима нужен хотя бы один готовый магазинный продукт.";
+    }
+    if (!availableNutrientsLoading && availableNutrients.length === 0) {
+      return "Для выбранного источника пока нет доступных пищевых веществ для расчета.";
+    }
     if (!comparisonMode) {
       return "Сначала выберите множество сравнения.";
     }
@@ -581,11 +660,29 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       return "Для свободного выбора сначала добавьте продукты в множество сравнения.";
     }
     return "";
-  }, [comparisonMode, selectedProducts.length, subtypeId, typeId]);
+  }, [availableNutrients.length, availableNutrientsLoading, comparisonMode, retailProducts.length, selectedProducts.length, sourceMode, subtypeId, typeId]);
 
   const searchSuggestions = useMemo(() => {
     const search = String(selectionSearch || "").trim().toLowerCase();
-    let pool = catalogProducts;
+    let pool = [];
+    if (sourceMode === "retail_only") {
+      pool = retailProducts;
+    } else if (sourceMode === "reference_plus_retail") {
+      pool = [
+        ...catalogProducts.map((item) => ({
+          ...item,
+          recommendationId: Number(item.id),
+          sourceKind: "reference",
+        })),
+        ...retailProducts,
+      ];
+    } else {
+      pool = catalogProducts.map((item) => ({
+        ...item,
+        recommendationId: Number(item.id),
+        sourceKind: "reference",
+      }));
+    }
     if (selectionTypeId) {
       pool = pool.filter((item) => String(item?.typeId ?? item?.type_id ?? "") === String(selectionTypeId));
     }
@@ -595,11 +692,11 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     if (search) {
       pool = pool.filter((item) => String(item?.name || "").toLowerCase().includes(search));
     }
-    const selectedIds = new Set(selectedProducts.map((item) => Number(item.id)));
+    const selectedIds = new Set(selectedProducts.map((item) => String(item.recommendationId ?? item.id)));
     return pool
-      .filter((item) => !selectedIds.has(Number(item.id)))
+      .filter((item) => !selectedIds.has(String(item.recommendationId ?? item.id)))
       .slice(0, 20);
-  }, [catalogProducts, selectedProducts, selectionSearch, selectionSubtypeId, selectionTypeId]);
+  }, [catalogProducts, retailProducts, selectedProducts, selectionSearch, selectionSubtypeId, selectionTypeId, sourceMode]);
 
   const items = useMemo(() => {
     const data = [...rawItems];
@@ -636,22 +733,31 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     setError("");
 
     try {
-      const localCatalog = await ensureLocalCatalog();
-      setLoadingProgress(24);
-      setLoadingDetail("Подготовка данных для расчета");
-      const localPayload = toRecommendationPayload(localCatalog);
+      let localPayload = null;
+      if (sourceMode === "reference_only") {
+        const localCatalog = await ensureLocalCatalog();
+        setLoadingProgress(24);
+        setLoadingDetail("Подготовка данных для расчета");
+        localPayload = toRecommendationPayload(localCatalog);
+      } else {
+        setLoadingProgress(28);
+        setLoadingDetail("Подготовка данных для расчета");
+      }
       setLoadingProgress(40);
       startProgress("Расчет показателей покрытия, лимитной нагрузки и приоритетности");
 
       const data = await fetchRecommendations({
         profileId: profileIdNum,
         mode: "catalog",
+        sourceMode,
         comparisonMode,
         typeId: typeId || null,
         subtypeId: subtypeId || null,
         limit: 500,
         localProducts: localPayload,
-        selectedProductIds: comparisonMode === "selected" ? selectedProducts.map((item) => Number(item.id)) : null,
+        selectedProductIds: comparisonMode === "selected"
+          ? selectedProducts.map((item) => Number(item.recommendationId ?? item.id))
+          : null,
       });
 
       stopProgress();
@@ -665,7 +771,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     } finally {
       setLoading(false);
     }
-  }, [comparisonMode, ensureLocalCatalog, profileIdNum, selectedProducts, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
+  }, [comparisonMode, ensureLocalCatalog, profileIdNum, selectedProducts, sourceMode, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -677,7 +783,11 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   }, [items]);
 
   const comparisonLabel = useMemo(() => {
-    if (comparisonMode === "global") return "вся база продуктов";
+    if (comparisonMode === "global") {
+      if (sourceMode === "retail_only") return "все готовые магазинные продукты";
+      if (sourceMode === "reference_plus_retail") return "все эталонные и готовые магазинные продукты";
+      return "вся база продуктов";
+    }
     if (comparisonMode === "type") {
       const group = types.find((item) => String(item.id) === String(typeId));
       return group ? `группа «${group.name}»` : "выбранная группа";
@@ -690,14 +800,23 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       return "выбранные пользователем продукты";
     }
     return "—";
-  }, [comparisonMode, subtypeId, subtypes, typeId, types]);
+  }, [comparisonMode, sourceMode, subtypeId, subtypes, typeId, types]);
+
+  const sourceModeLabel = useMemo(() => {
+    const found = sourceModeOptions.find((item) => item.value === sourceMode);
+    return found?.label || "—";
+  }, [sourceMode]);
 
   const addSelectedProduct = (product) => {
-    setSelectedProducts((prev) => (prev.some((item) => Number(item.id) === Number(product.id)) ? prev : [...prev, product]));
+    setSelectedProducts((prev) => (
+      prev.some((item) => String(item.recommendationId ?? item.id) === String(product.recommendationId ?? product.id))
+        ? prev
+        : [...prev, product]
+    ));
   };
 
-  const removeSelectedProduct = (productId) => {
-    setSelectedProducts((prev) => prev.filter((item) => Number(item.id) !== Number(productId)));
+  const removeSelectedProduct = (recommendationId) => {
+    setSelectedProducts((prev) => prev.filter((item) => String(item.recommendationId ?? item.id) !== String(recommendationId)));
   };
 
   const sortLabel = (field, label) => {
@@ -746,9 +865,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       <div style={{ ...box, padding: 16, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 700, fontSize: 18 }}>Рекомендации</div>
         <div style={{ color: "#555", lineHeight: 1.55 }}>
-          Сначала выбери множество сравнения. Алгоритм сравнивает продукты только внутри выбранной базы,
-          группы или подгруппы. После этого рассчитываются уровень покрытия, уровень лимитной нагрузки и итоговая
-          оценка приоритетности продукта.
+          Сначала выбери источник продуктов и множество сравнения. Алгоритм сравнивает продукты только внутри выбранной базы,
+          группы, подгруппы или вручную собранного множества. После этого рассчитываются уровень покрытия, уровень лимитной нагрузки
+          и итоговая оценка приоритетности продукта.
         </div>
 
         <form
@@ -759,6 +878,38 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
           style={{ display: "grid", gap: 12 }}
         >
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              <label>Источник продуктов</label>
+              <select
+                style={input}
+                value={sourceMode}
+                onChange={(event) => {
+                  setSourceMode(event.target.value);
+                  setComparisonMode("");
+                  setTypeId("");
+                  setSubtypeId("");
+                  setSelectionTypeId("");
+                  setSelectionSubtypeId("");
+                  setSelectionSearch("");
+                  setSelectedProducts([]);
+                  setPayload(null);
+                  setSelectedItem(null);
+                  setError("");
+                }}
+              >
+                {sourceModeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: 12, color: "#666" }}>
+                {sourceMode === "reference_only" && "Используется локальная копия эталонного справочника."}
+                {sourceMode === "retail_only" && "Используются только готовые магазинные продукты текущего пользователя."}
+                {sourceMode === "reference_plus_retail" && "Сравнение строится по эталонным и готовым магазинным продуктам одновременно."}
+              </div>
+            </div>
+
             <div style={{ display: "grid", gap: 6 }}>
               <label>Множество сравнения</label>
               <select
@@ -797,6 +948,26 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                   Это обязательное поле. Без него алгоритм не знает, с какими продуктами сравнивать результат.
                 </div>
               )}
+            </div>
+
+            <div style={{ display: "grid", gap: 6 }}>
+              <label>Доступные пищевые вещества</label>
+              <div
+                style={{
+                  ...input,
+                  display: "flex",
+                  alignItems: "center",
+                  background: "#fafcfd",
+                  color: "#44515d",
+                }}
+              >
+                {availableNutrientsLoading ? "Загрузка..." : `${availableNutrients.length} шт.`}
+              </div>
+              <div style={{ fontSize: 12, color: availableNutrients.length ? "#666" : "#8a6d1d" }}>
+                {availableNutrients.length
+                  ? "Именно по этим веществам выбранный источник может участвовать в расчете."
+                  : "Для выбранного источника пока нет полного набора данных."}
+              </div>
             </div>
 
             {comparisonMode === "type" && (
@@ -934,6 +1105,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                             <div style={{ fontSize: 12, color: "#666" }}>
                               {product.subtypeName || product.typeName || "Без подгруппы"}
                             </div>
+                            <div style={{ fontSize: 11, color: "#8a93a0", marginTop: 4 }}>
+                              {product.sourceKind === "retail" ? "Магазинный продукт" : "Эталонный продукт"}
+                            </div>
                           </div>
                           <button
                             type="button"
@@ -945,9 +1119,9 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                               whiteSpace: "nowrap",
                             }}
                             onClick={() => addSelectedProduct(product)}
-                            disabled={selectedProducts.some((item) => Number(item.id) === Number(product.id))}
+                            disabled={selectedProducts.some((item) => String(item.recommendationId ?? item.id) === String(product.recommendationId ?? product.id))}
                           >
-                            {selectedProducts.some((item) => Number(item.id) === Number(product.id)) ? "Добавлено" : "Добавить"}
+                            {selectedProducts.some((item) => String(item.recommendationId ?? item.id) === String(product.recommendationId ?? product.id)) ? "Добавлено" : "Добавить"}
                           </button>
                         </div>
                       ))
@@ -992,8 +1166,11 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                             <div style={{ fontSize: 12, color: "#666" }}>
                               {product.subtypeName || product.typeName || "Без подгруппы"}
                             </div>
+                            <div style={{ fontSize: 11, color: "#8a93a0", marginTop: 4 }}>
+                              {product.sourceKind === "retail" ? "Магазинный продукт" : "Эталонный продукт"}
+                            </div>
                           </div>
-                          <button type="button" style={btn} onClick={() => removeSelectedProduct(product.id)}>
+                          <button type="button" style={btn} onClick={() => removeSelectedProduct(product.recommendationId ?? product.id)}>
                             Убрать
                           </button>
                         </div>
@@ -1031,12 +1208,21 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
           </div>
         </form>
 
+        {sourceMode !== "reference_only" && retailProducts.length === 0 && (
+          <div style={{ color: "#8a6d1d", lineHeight: 1.5 }}>
+            Готовых магазинных продуктов пока нет. Сначала добавьте их во вкладке магазинных продуктов и заполните пищевую ценность.
+          </div>
+        )}
         {error && <div style={{ color: "crimson" }}>{error}</div>}
       </div>
 
         {payload && (
         <div style={{ ...box, padding: 16, display: "grid", gap: 12 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+            <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Источник продуктов</div>
+              <div>{sourceModeLabel}</div>
+            </div>
             <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Множество сравнения</div>
               <div>{comparisonLabel}</div>
