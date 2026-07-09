@@ -355,7 +355,7 @@ class RetailFoodProductWriteSerializer(serializers.ModelSerializer):
         if components_data is None:
             return
         RetailFoodProductComponent.objects.filter(retail_fp=retail_product).delete()
-        rows = [
+        rows = (
             RetailFoodProductComponent(
                 retail_fp=retail_product,
                 food_component_id=item["food_component_id"],
@@ -365,16 +365,16 @@ class RetailFoodProductWriteSerializer(serializers.ModelSerializer):
                 matched_by=item.get("matched_by"),
             )
             for item in components_data
-        ]
-        if rows:
-            RetailFoodProductComponent.objects.bulk_create(rows)
+        )
+        for row in rows:
+            row.save(force_insert=True)
 
     def _replace_additives(self, retail_product, additives_data):
         if additives_data is None:
             return
         RetailFoodProductAdditive.objects.filter(retail_fp=retail_product).delete()
         next_id = (RetailFoodProductAdditive.objects.aggregate(max_id=Max("id"))["max_id"] or 0) + 1
-        rows = [
+        rows = (
             RetailFoodProductAdditive(
                 id=next_id + index,
                 retail_fp=retail_product,
@@ -385,9 +385,9 @@ class RetailFoodProductWriteSerializer(serializers.ModelSerializer):
                 matched_by=item.get("matched_by"),
             )
             for index, item in enumerate(additives_data)
-        ]
-        if rows:
-            RetailFoodProductAdditive.objects.bulk_create(rows)
+        )
+        for row in rows:
+            row.save(force_insert=True)
 
     def create(self, validated_data):
         components_data = validated_data.pop("components", None)
