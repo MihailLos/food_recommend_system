@@ -6,6 +6,12 @@ from .views import (FoodProductTypeViewSet, FoodProductViewSet,
                     ConsumerProfileViewSet, WorkActivityGroupViewSet, ConsumerGoalViewSet, ProfileTargetsView,
                     NutrientDictionaryViewSet, RecommendationsView, FoodProductSubtypeViewSet,
                     CsrfCookieView, RegisterView, LoginView, LogoutView, CurrentUserView)
+from .views import (
+    FoodAdditiveGroupViewSet,
+    FoodAdditiveViewSet,
+    RetailFoodProductViewSet,
+    RecommendationAvailableNutrientsView,
+)
 
 router = DefaultRouter()
 router.register(r"types", FoodProductTypeViewSet)
@@ -21,6 +27,9 @@ router.register(r"work-activity-groups", WorkActivityGroupViewSet, basename="wor
 router.register(r"allergens", AllergenListView, basename="allergens")
 router.register(r"consumer/goals", ConsumerGoalViewSet, basename="consumer-goals")
 router.register(r"nutrients-dictionary", NutrientDictionaryViewSet, basename="nutrients-dictionary")
+router.register(r"food-additive-groups", FoodAdditiveGroupViewSet, basename="food-additive-groups")
+router.register(r"food-additives", FoodAdditiveViewSet, basename="food-additives")
+router.register(r"retail-products", RetailFoodProductViewSet, basename="retail-products")
 
 urlpatterns = [
     path("", include(router.urls)),
@@ -30,5 +39,6 @@ urlpatterns = [
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("auth/me/", CurrentUserView.as_view(), name="auth-me"),
     path("consumer/profiles/<int:profile_id>/targets/", ProfileTargetsView.as_view(), name="profile-targets"),
+    path("consumer/recommendations/available-nutrients/", RecommendationAvailableNutrientsView.as_view(), name="recommendation-available-nutrients"),
     path("consumer/recommendations/", RecommendationsView.as_view()),
 ]

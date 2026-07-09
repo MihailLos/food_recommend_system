@@ -52,6 +52,204 @@ class FoodProducts(models.Model):
         return self.subtype.product_type if self.subtype_id and self.subtype else None
 
 
+class FoodAdditiveGroup(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=255)
+
+    class Meta:
+        managed = False
+        db_table = "food_additive_groups"
+
+    def __str__(self):
+        return self.name
+
+
+class FoodAdditive(models.Model):
+    id = models.AutoField(primary_key=True)
+    code = models.CharField(max_length=64, null=True, blank=True)
+    name = models.CharField(max_length=255)
+    group = models.ForeignKey(
+        FoodAdditiveGroup,
+        on_delete=models.PROTECT,
+        db_column="group_id",
+        related_name="additives",
+    )
+    for_children = models.BooleanField(null=True, blank=True)
+    provoke_allergy = models.BooleanField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = "food_additives"
+
+    def __str__(self):
+        return self.code or self.name
+
+
+class RetailFoodProduct(models.Model):
+    class Visibility(models.TextChoices):
+        PRIVATE = "private", "Private"
+        SHARED = "shared", "Shared"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        MATCHED = "matched", "Matched"
+        READY = "ready", "Ready"
+
+    class NutritionFillMode(models.TextChoices):
+        LABEL_ONLY = "label_only", "Label only"
+        LABEL_PLUS_REFERENCE = "label_plus_reference", "Label plus reference"
+        REFERENCE_ONLY = "reference_only", "Reference only"
+        MANUAL = "manual", "Manual"
+
+    class MatchMethod(models.TextChoices):
+        AUTO = "auto", "Auto"
+        MANUAL = "manual", "Manual"
+        AUTO_CONFIRMED = "auto_confirmed", "Auto confirmed"
+
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=255)
+    composition_text = models.TextField(null=True, blank=True)
+    related_food_group = models.ForeignKey(
+        FoodProductTypes,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="related_food_group_id",
+        related_name="retail_products_by_group",
+    )
+    related_food_subgroup = models.ForeignKey(
+        FoodProductSubtypes,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="related_food_subgroup_id",
+        related_name="retail_products_by_subgroup",
+    )
+    related_food_product = models.ForeignKey(
+        FoodProducts,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="related_food_product_id",
+        related_name="retail_products_by_reference",
+    )
+    protein_g = models.FloatField(null=True, blank=True)
+    fats_g = models.FloatField(null=True, blank=True)
+    carbs_g = models.FloatField(null=True, blank=True)
+    mds_g = models.FloatField(null=True, blank=True)
+    starch_g = models.FloatField(null=True, blank=True)
+    water_g = models.FloatField(null=True, blank=True)
+    energy_kcal = models.FloatField(null=True, blank=True)
+    dietary_fiber_g = models.FloatField(null=True, blank=True)
+    na_mg = models.FloatField(null=True, blank=True)
+    k_mg = models.FloatField(null=True, blank=True)
+    mg_mg = models.FloatField(null=True, blank=True)
+    p_mg = models.FloatField(null=True, blank=True)
+    fe_mg = models.FloatField(null=True, blank=True)
+    ca_mg = models.FloatField(null=True, blank=True)
+    ash_g = models.FloatField(null=True, blank=True)
+    a_mg = models.FloatField(null=True, blank=True)
+    b1_mg = models.FloatField(null=True, blank=True)
+    b2_mg = models.FloatField(null=True, blank=True)
+    pp_mg = models.FloatField(null=True, blank=True)
+    c_mg = models.FloatField(null=True, blank=True)
+    beta_carotene_mg = models.FloatField(null=True, blank=True)
+    retinol_index = models.FloatField(null=True, blank=True)
+    tocopherol_index = models.FloatField(null=True, blank=True)
+    niacin_index = models.FloatField(null=True, blank=True)
+    nlc_g = models.FloatField(null=True, blank=True)
+    pufa_g = models.FloatField(null=True, blank=True)
+    cholesterol_g = models.FloatField(null=True, blank=True)
+    organic_acids_g = models.FloatField(null=True, blank=True)
+    alcohol_pct = models.FloatField(null=True, blank=True)
+    visibility = models.CharField(max_length=32, choices=Visibility.choices)
+    status = models.CharField(max_length=32, choices=Status.choices)
+    nutrition_fill_mode = models.CharField(max_length=32, choices=NutritionFillMode.choices, null=True, blank=True)
+    match_method = models.CharField(max_length=32, choices=MatchMethod.choices, null=True, blank=True)
+    created_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="created_by_user_id",
+        related_name="retail_food_products",
+    )
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+    is_ready_for_recommendation = models.BooleanField(default=False)
+    group_match_confidence = models.FloatField(null=True, blank=True)
+    subgroup_match_confidence = models.FloatField(null=True, blank=True)
+    product_match_confidence = models.FloatField(null=True, blank=True)
+    name_ocr_raw = models.TextField(null=True, blank=True)
+    composition_ocr_raw = models.TextField(null=True, blank=True)
+    nutrition_ocr_raw = models.TextField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = "retail_food_products"
+
+    def __str__(self):
+        return self.name
+
+
+class RetailFoodProductAdditive(models.Model):
+    id = models.AutoField(primary_key=True)
+    retail_fp = models.ForeignKey(
+        RetailFoodProduct,
+        on_delete=models.CASCADE,
+        db_column="retail_fp_id",
+        related_name="retail_additives",
+    )
+    food_additive = models.ForeignKey(
+        FoodAdditive,
+        on_delete=models.CASCADE,
+        db_column="food_additive_id",
+        related_name="retail_product_links",
+    )
+    matched_by = models.CharField(
+        max_length=32,
+        choices=RetailFoodProduct.MatchMethod.choices,
+        null=True,
+        blank=True,
+    )
+    additive_text = models.TextField(null=True, blank=True)
+    position_index = models.IntegerField(null=True, blank=True)
+    match_confidence = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = "retail_food_products_additives"
+
+
+class RetailFoodProductComponent(models.Model):
+    id = models.AutoField(primary_key=True)
+    retail_fp = models.ForeignKey(
+        RetailFoodProduct,
+        on_delete=models.CASCADE,
+        db_column="retail_fp_id",
+        related_name="retail_components",
+    )
+    food_component = models.ForeignKey(
+        FoodProducts,
+        on_delete=models.CASCADE,
+        db_column="food_component_id",
+        related_name="retail_component_links",
+    )
+    matched_by = models.CharField(
+        max_length=32,
+        choices=RetailFoodProduct.MatchMethod.choices,
+        null=True,
+        blank=True,
+    )
+    component_text = models.TextField(null=True, blank=True)
+    position_index = models.IntegerField(null=True, blank=True)
+    match_confidence = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = "retail_food_products_components"
+
+
 class Macronutrients(models.Model):
     id = models.AutoField(db_column='ID', primary_key=True)  # Field name made lowercase.
     food_product = models.OneToOneField(FoodProducts, models.CASCADE, db_column='Food_Product_ID', related_name='macros')  # Field name made lowercase.

@@ -8,11 +8,13 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils import timezone
 
 from .models import (FoodProductTypes, FoodProducts, Macronutrients, Minerals,
                      Vitamins, OtherNutrients, FatAcids, CulinaryProcessingType, Allergen, AllergenProduct, NotChildProduct,
                      ConsumerProfile, WorkActivityGroup, ProfileAllergen, ConsumerGoal, GoalNutrientPreference, GoalNutrientTarget,
-                     NutrientDictionary, FoodProductSubtypes)
+                     NutrientDictionary, FoodProductSubtypes, FoodAdditiveGroup, FoodAdditive,
+                     RetailFoodProduct)
 from .serializers import (FoodProductTypeSerializer, FoodProductSerializer,
                           MacronutrientsSerializer, MineralsSerializer,
                           VitaminsSerializer, OtherNutrientsSerializer,
@@ -20,7 +22,10 @@ from .serializers import (FoodProductTypeSerializer, FoodProductSerializer,
                           ConsumerProfileSerializer, WorkActivityGroupSerializer,
                           ConsumerGoalSerializer, GoalNutrientPreferenceSerializer, GoalNutrientTargetSerializer, NutrientDictionarySerializer,
                           RegisterSerializer, LoginSerializer, CurrentUserSerializer,
-                          FoodProductSubtypeSerializer)
+                          FoodProductSubtypeSerializer, FoodAdditiveGroupSerializer, FoodAdditiveSerializer,
+                          RetailFoodProductSerializer, RetailFoodProductWriteSerializer,
+                          RetailNameMatchRequestSerializer, RetailCompositionMatchRequestSerializer,
+                          RetailNutritionFillPreviewSerializer)
 from .services.processing_calc import compute_processed_nutrients
 from .services.processing_calc import pick_processing_rule
 from catalog.utils.energy_calc import calculate_bmi, calculate_tdee_for_profile
@@ -39,6 +44,16 @@ from django.shortcuts import get_object_or_404
 
 from catalog.utils.allergens import get_allergens_for_product
 from catalog.services.recommendations import recommend, get_goal_nutrient_profiles_payload
+from catalog.services.retail_matching import match_retail_name, match_retail_composition
+from catalog.services.retail_nutrition import (
+    RETAIL_NUTRIENT_FIELDS,
+    apply_fill_missing_retail_nutrients,
+    build_reference_product_payload,
+    build_retail_product_payload,
+    get_available_nutrient_codes_for_retail_products,
+    preview_fill_missing_retail_nutrients,
+)
+from catalog.services.retail_rules import apply_retail_product_readiness
 
 User = get_user_model()
 
@@ -254,6 +269,110 @@ class ProductAllergensView(APIView):
 class WorkActivityGroupViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = WorkActivityGroup.objects.all().order_by("id")
     serializer_class = WorkActivityGroupSerializer
+
+
+class FoodAdditiveGroupViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = FoodAdditiveGroup.objects.all().order_by("name", "id")
+    serializer_class = FoodAdditiveGroupSerializer
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ["name"]
+    ordering_fields = ["id", "name"]
+    pagination_class = None
+
+
+class FoodAdditiveViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = FoodAdditive.objects.select_related("group").all().order_by("name", "id")
+    serializer_class = FoodAdditiveSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ["group", "for_children", "provoke_allergy"]
+    search_fields = ["code", "name"]
+    ordering_fields = ["id", "code", "name"]
+    pagination_class = None
+
+
+class RetailFoodProductViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ["status", "visibility", "related_food_group", "related_food_subgroup", "related_food_product"]
+    search_fields = ["name", "composition_text"]
+    ordering_fields = ["id", "name", "created_at", "updated_at"]
+
+    def get_queryset(self):
+        return (
+            RetailFoodProduct.objects.filter(created_by_user=self.request.user)
+            .select_related("related_food_group", "related_food_subgroup", "related_food_product")
+            .prefetch_related(
+                "retail_components",
+                "retail_components__food_component",
+                "retail_additives",
+                "retail_additives__food_additive",
+            )
+            .order_by("-updated_at", "-id")
+        )
+
+    def get_serializer_class(self):
+        if self.action in {"create", "update", "partial_update"}:
+            return RetailFoodProductWriteSerializer
+        return RetailFoodProductSerializer
+
+    def perform_create(self, serializer):
+        now = timezone.now()
+        retail_product = serializer.save(
+            created_by_user=self.request.user,
+            created_at=now,
+            updated_at=now,
+            status=RetailFoodProduct.Status.DRAFT,
+            is_ready_for_recommendation=False,
+        )
+        if retail_product.nutrition_fill_mode:
+            apply_fill_missing_retail_nutrients(retail_product)
+            apply_retail_product_readiness(retail_product)
+            retail_product.updated_at = timezone.now()
+            retail_product.save()
+
+    def perform_update(self, serializer):
+        retail_product = serializer.save(updated_at=timezone.now())
+        if retail_product.nutrition_fill_mode:
+            apply_fill_missing_retail_nutrients(retail_product)
+            apply_retail_product_readiness(retail_product)
+            retail_product.updated_at = timezone.now()
+            retail_product.save()
+
+    @action(detail=False, methods=["post"], url_path="match-name")
+    def match_name(self, request):
+        serializer = RetailNameMatchRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(match_retail_name(serializer.validated_data["name"]))
+
+    @action(detail=False, methods=["post"], url_path="match-composition")
+    def match_composition(self, request):
+        serializer = RetailCompositionMatchRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(match_retail_composition(serializer.validated_data["composition_text"]))
+
+    @action(detail=False, methods=["post"], url_path="fill-nutrients-preview")
+    def fill_nutrients_preview(self, request):
+        serializer = RetailNutritionFillPreviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        reference_product = None
+        reference_product_id = serializer.validated_data.get("related_food_product_id")
+        if reference_product_id:
+            reference_product = get_object_or_404(
+                FoodProducts.objects.select_related("subtype", "subtype__product_type")
+                .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids"),
+                pk=reference_product_id,
+            )
+        current_values = {
+            field_name: serializer.validated_data.get(field_name)
+            for field_name in RETAIL_NUTRIENT_FIELDS
+        }
+        return Response(
+            preview_fill_missing_retail_nutrients(
+                reference_product=reference_product,
+                current_values=current_values,
+                fill_mode=serializer.validated_data.get("nutrition_fill_mode"),
+            )
+        )
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
@@ -631,8 +750,109 @@ class NutrientDictionaryViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = ("source_group", "sort_order", "ru_name", "code")
     ordering = ("source_group", "sort_order", "ru_name")
 
+
+class RecommendationAvailableNutrientsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        profile_id = request.query_params.get("profile")
+        if not profile_id:
+            return Response({"detail": "profile is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = get_object_or_404(ConsumerProfile, pk=int(profile_id), user=request.user)
+        ensure_active_goal(profile)
+
+        source_mode = str(request.query_params.get("source_mode") or "reference_only").strip()
+        active_codes = set(
+            NutrientDictionary.objects.filter(is_active=True).values_list("code", flat=True)
+        )
+
+        if source_mode == "retail_only":
+            retail_products = list(
+                RetailFoodProduct.objects.filter(
+                    created_by_user=request.user,
+                    is_ready_for_recommendation=True,
+                ).order_by("id")
+            )
+            available_codes = set(get_available_nutrient_codes_for_retail_products(retail_products))
+        elif source_mode == "reference_plus_retail":
+            retail_products = list(
+                RetailFoodProduct.objects.filter(
+                    created_by_user=request.user,
+                    is_ready_for_recommendation=True,
+                ).order_by("id")
+            )
+            available_codes = active_codes & set(get_available_nutrient_codes_for_retail_products(retail_products))
+        else:
+            available_codes = active_codes
+
+        rows = NutrientDictionary.objects.filter(
+            is_active=True,
+            code__in=sorted(available_codes),
+        ).order_by("source_group", "sort_order", "ru_name")
+        return Response(NutrientDictionarySerializer(rows, many=True).data)
+
+
 class RecommendationsView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def _get_ready_retail_products(self, user):
+        return list(
+            RetailFoodProduct.objects.filter(
+                created_by_user=user,
+                is_ready_for_recommendation=True,
+            )
+            .select_related("related_food_group", "related_food_subgroup", "related_food_product")
+            .prefetch_related(
+                "retail_components",
+                "retail_components__food_component",
+                "retail_additives",
+                "retail_additives__food_additive",
+                "related_food_product__subtype",
+                "related_food_product__subtype__product_type",
+                "related_food_product__macros",
+                "related_food_product__minerals",
+                "related_food_product__vitamins",
+                "related_food_product__other_nutrients",
+                "related_food_product__fat_acids",
+            )
+            .order_by("id")
+        )
+
+    def _get_reference_products_for_local_mode(self, q=None, type_id=None, subtype_id=None):
+        qs = (
+            FoodProducts.objects.all()
+            .select_related("subtype", "subtype__product_type")
+            .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")
+        )
+        if q:
+            qs = qs.filter(name__icontains=q.strip())
+        if subtype_id:
+            qs = qs.filter(subtype_id=subtype_id)
+        elif type_id:
+            qs = qs.filter(subtype__product_type_id=type_id)
+        return list(qs[:2000])
+
+    def _build_local_products_payload(
+        self,
+        request,
+        source_mode,
+        q=None,
+        type_id=None,
+        subtype_id=None,
+    ):
+        if source_mode == "retail_only":
+            return [build_retail_product_payload(item) for item in self._get_ready_retail_products(request.user)]
+
+        if source_mode == "reference_plus_retail":
+            reference_payloads = [
+                build_reference_product_payload(item)
+                for item in self._get_reference_products_for_local_mode(q=q, type_id=type_id, subtype_id=subtype_id)
+            ]
+            retail_payloads = [build_retail_product_payload(item) for item in self._get_ready_retail_products(request.user)]
+            return reference_payloads + retail_payloads
+
+        return None
 
     def _build_response(self, request, payload):
         profile_id = payload.get("profile")
@@ -645,6 +865,7 @@ class RecommendationsView(APIView):
         comparison_mode = str(payload.get("comparison_mode") or "subgroup").strip()
         local_products = payload.get("local_products") or None
         selected_product_ids = payload.get("selected_product_ids") or None
+        source_mode = str(payload.get("source_mode") or "reference_only").strip()
 
         profile = get_object_or_404(ConsumerProfile, pk=int(profile_id), user=request.user)
         active_goal_exists = ConsumerGoal.objects.filter(
@@ -657,6 +878,22 @@ class RecommendationsView(APIView):
                 {"detail": "Для выбранного профиля не задана активная цель питания."},
                 status=status.HTTP_409_CONFLICT,
             )
+
+        if local_products is None:
+            local_products = self._build_local_products_payload(
+                request=request,
+                source_mode=source_mode,
+                q=q,
+                type_id=int(type_id) if type_id else None,
+                subtype_id=int(subtype_id) if subtype_id else None,
+            )
+
+        if source_mode == "retail_only" and selected_product_ids:
+            selected_product_ids = [
+                -abs(int(product_id))
+                for product_id in selected_product_ids
+                if product_id not in (None, "")
+            ]
 
         data = recommend(
             profile_id=int(profile_id),

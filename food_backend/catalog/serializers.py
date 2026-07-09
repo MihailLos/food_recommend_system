@@ -4,10 +4,13 @@ from django.contrib.auth.password_validation import validate_password
 from decimal import Decimal
 from .models import (FoodProductTypes, FoodProducts, Macronutrients, Minerals,
                      Vitamins, OtherNutrients, FatAcids, FoodProductSubtypes, Allergen, ConsumerProfile, WorkActivityGroup,
-                     ProfileAllergen, ConsumerGoal, GoalNutrientPreference, GoalNutrientTarget, NutrientDictionary)
+                     ProfileAllergen, ConsumerGoal, GoalNutrientPreference, GoalNutrientTarget, NutrientDictionary,
+                     FoodAdditiveGroup, FoodAdditive, RetailFoodProduct, RetailFoodProductComponent, RetailFoodProductAdditive)
 from catalog.utils.allergens import get_allergens_for_product
 from catalog.utils.child_rules import pick_not_child_rule
 from catalog.utils.energy_calc import calculate_bmi, calculate_tdee_for_profile
+from catalog.services.retail_rules import apply_retail_product_readiness
+from catalog.services.retail_nutrition import RETAIL_NUTRIENT_FIELDS
 
 User = get_user_model()
 
@@ -157,6 +160,248 @@ class AllergenSerializer(serializers.ModelSerializer):
     class Meta:
         model = Allergen
         fields = ["id", "name"]
+
+
+class FoodAdditiveGroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FoodAdditiveGroup
+        fields = ["id", "name"]
+
+
+class FoodAdditiveSerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source="group.name", read_only=True)
+
+    class Meta:
+        model = FoodAdditive
+        fields = ["id", "code", "name", "group", "group_name", "for_children", "provoke_allergy"]
+
+
+class RetailFoodProductComponentWriteSerializer(serializers.Serializer):
+    food_component_id = serializers.IntegerField()
+    component_text = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    position_index = serializers.IntegerField(required=False, allow_null=True)
+    match_confidence = serializers.FloatField(required=False, allow_null=True)
+    matched_by = serializers.ChoiceField(
+        choices=RetailFoodProduct.MatchMethod.choices,
+        required=False,
+        allow_null=True,
+    )
+
+
+class RetailFoodProductAdditiveWriteSerializer(serializers.Serializer):
+    food_additive_id = serializers.IntegerField()
+    additive_text = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    position_index = serializers.IntegerField(required=False, allow_null=True)
+    match_confidence = serializers.FloatField(required=False, allow_null=True)
+    matched_by = serializers.ChoiceField(
+        choices=RetailFoodProduct.MatchMethod.choices,
+        required=False,
+        allow_null=True,
+    )
+
+
+class RetailFoodProductComponentSerializer(serializers.ModelSerializer):
+    food_component_name = serializers.CharField(source="food_component.name", read_only=True)
+
+    class Meta:
+        model = RetailFoodProductComponent
+        fields = [
+            "id",
+            "food_component",
+            "food_component_name",
+            "matched_by",
+            "component_text",
+            "position_index",
+            "match_confidence",
+        ]
+
+
+class RetailFoodProductAdditiveSerializer(serializers.ModelSerializer):
+    food_additive_name = serializers.CharField(source="food_additive.name", read_only=True)
+    food_additive_code = serializers.CharField(source="food_additive.code", read_only=True)
+
+    class Meta:
+        model = RetailFoodProductAdditive
+        fields = [
+            "id",
+            "food_additive",
+            "food_additive_code",
+            "food_additive_name",
+            "matched_by",
+            "additive_text",
+            "position_index",
+            "match_confidence",
+        ]
+
+
+class RetailFoodProductSerializer(serializers.ModelSerializer):
+    related_food_group_name = serializers.CharField(source="related_food_group.name", read_only=True)
+    related_food_subgroup_name = serializers.CharField(source="related_food_subgroup.name", read_only=True)
+    related_food_product_name = serializers.CharField(source="related_food_product.name", read_only=True)
+    components = serializers.SerializerMethodField()
+    additives = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RetailFoodProduct
+        fields = [
+            "id",
+            "name",
+            "composition_text",
+            "related_food_group",
+            "related_food_group_name",
+            "related_food_subgroup",
+            "related_food_subgroup_name",
+            "related_food_product",
+            "related_food_product_name",
+            *RETAIL_NUTRIENT_FIELDS,
+            "visibility",
+            "status",
+            "nutrition_fill_mode",
+            "match_method",
+            "created_by_user",
+            "created_at",
+            "updated_at",
+            "is_ready_for_recommendation",
+            "group_match_confidence",
+            "subgroup_match_confidence",
+            "product_match_confidence",
+            "name_ocr_raw",
+            "composition_ocr_raw",
+            "nutrition_ocr_raw",
+            "components",
+            "additives",
+        ]
+        read_only_fields = ["created_by_user", "created_at", "updated_at", "is_ready_for_recommendation", "status"]
+
+    def get_components(self, obj):
+        rows = obj.retail_components.all().order_by("position_index", "id")
+        return RetailFoodProductComponentSerializer(rows, many=True).data
+
+    def get_additives(self, obj):
+        rows = obj.retail_additives.all().order_by("position_index", "id")
+        return RetailFoodProductAdditiveSerializer(rows, many=True).data
+
+
+class RetailFoodProductWriteSerializer(serializers.ModelSerializer):
+    components = RetailFoodProductComponentWriteSerializer(many=True, required=False)
+    additives = RetailFoodProductAdditiveWriteSerializer(many=True, required=False)
+
+    class Meta:
+        model = RetailFoodProduct
+        fields = [
+            "id",
+            "name",
+            "composition_text",
+            "related_food_group",
+            "related_food_subgroup",
+            "related_food_product",
+            *RETAIL_NUTRIENT_FIELDS,
+            "visibility",
+            "status",
+            "nutrition_fill_mode",
+            "match_method",
+            "group_match_confidence",
+            "subgroup_match_confidence",
+            "product_match_confidence",
+            "name_ocr_raw",
+            "composition_ocr_raw",
+            "nutrition_ocr_raw",
+            "components",
+            "additives",
+        ]
+        read_only_fields = ["status"]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        fill_mode = attrs.get("nutrition_fill_mode", getattr(self.instance, "nutrition_fill_mode", None))
+        related_food_product = attrs.get("related_food_product", getattr(self.instance, "related_food_product", None))
+        if fill_mode in {
+            RetailFoodProduct.NutritionFillMode.LABEL_PLUS_REFERENCE,
+            RetailFoodProduct.NutritionFillMode.REFERENCE_ONLY,
+        } and related_food_product is None:
+            raise serializers.ValidationError(
+                {"related_food_product": "Нужно выбрать эталонный продукт, если включено заполнение из справочника."}
+            )
+        return attrs
+
+    def _replace_components(self, retail_product, components_data):
+        if components_data is None:
+            return
+        RetailFoodProductComponent.objects.filter(retail_fp=retail_product).delete()
+        rows = [
+            RetailFoodProductComponent(
+                retail_fp=retail_product,
+                food_component_id=item["food_component_id"],
+                component_text=item.get("component_text"),
+                position_index=item.get("position_index"),
+                match_confidence=item.get("match_confidence"),
+                matched_by=item.get("matched_by"),
+            )
+            for item in components_data
+        ]
+        if rows:
+            RetailFoodProductComponent.objects.bulk_create(rows)
+
+    def _replace_additives(self, retail_product, additives_data):
+        if additives_data is None:
+            return
+        RetailFoodProductAdditive.objects.filter(retail_fp=retail_product).delete()
+        rows = [
+            RetailFoodProductAdditive(
+                retail_fp=retail_product,
+                food_additive_id=item["food_additive_id"],
+                additive_text=item.get("additive_text"),
+                position_index=item.get("position_index"),
+                match_confidence=item.get("match_confidence"),
+                matched_by=item.get("matched_by"),
+            )
+            for item in additives_data
+        ]
+        if rows:
+            RetailFoodProductAdditive.objects.bulk_create(rows)
+
+    def create(self, validated_data):
+        components_data = validated_data.pop("components", None)
+        additives_data = validated_data.pop("additives", None)
+        retail_product = super().create(validated_data)
+        self._replace_components(retail_product, components_data)
+        self._replace_additives(retail_product, additives_data)
+        apply_retail_product_readiness(retail_product)
+        retail_product.save()
+        return retail_product
+
+    def update(self, instance, validated_data):
+        components_data = validated_data.pop("components", None)
+        additives_data = validated_data.pop("additives", None)
+        retail_product = super().update(instance, validated_data)
+        self._replace_components(retail_product, components_data)
+        self._replace_additives(retail_product, additives_data)
+        apply_retail_product_readiness(retail_product)
+        retail_product.save()
+        return retail_product
+
+
+class RetailNameMatchRequestSerializer(serializers.Serializer):
+    name = serializers.CharField()
+
+
+class RetailCompositionMatchRequestSerializer(serializers.Serializer):
+    composition_text = serializers.CharField()
+
+
+class RetailNutritionFillPreviewSerializer(serializers.Serializer):
+    related_food_product_id = serializers.IntegerField(required=False, allow_null=True)
+    nutrition_fill_mode = serializers.ChoiceField(
+        choices=RetailFoodProduct.NutritionFillMode.choices,
+        required=False,
+        allow_null=True,
+    )
+
+    def to_internal_value(self, data):
+        validated = super().to_internal_value(data)
+        for field_name in RETAIL_NUTRIENT_FIELDS:
+            validated[field_name] = data.get(field_name)
+        return validated
 
 class WorkActivityGroupSerializer(serializers.ModelSerializer):
     class Meta:
