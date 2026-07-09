@@ -1,5 +1,13 @@
 import client from "./client";
 
+export async function fetchFoodAdditiveGroups() {
+  return client.get("/api/food-additive-groups/").then((response) => response.data);
+}
+
+export async function fetchFoodAdditives(params = {}) {
+  return client.get("/api/food-additives/", { params }).then((response) => response.data);
+}
+
 export async function fetchRetailProducts(params = {}) {
   return client.get("/api/retail-products/", { params }).then((response) => response.data);
 }

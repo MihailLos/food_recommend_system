@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  fetchFoodAdditiveGroups,
+  fetchFoodAdditives,
   matchRetailComposition,
   matchRetailName,
   previewRetailNutritionFill,
@@ -201,6 +203,16 @@ function normalizeNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function normalizeList(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.results)) return data.results;
+  return [];
+}
+
+function normalizeSearchText(value) {
+  return String(value || "").trim().toLowerCase().replace(/ё/g, "е");
+}
+
 export default function RetailProductModal({
   open,
   onClose,
@@ -218,6 +230,13 @@ export default function RetailProductModal({
   const [compositionMatch, setCompositionMatch] = useState(null);
   const [fillPreview, setFillPreview] = useState(null);
   const [referenceSearch, setReferenceSearch] = useState("");
+  const [additiveGroups, setAdditiveGroups] = useState([]);
+  const [allAdditives, setAllAdditives] = useState([]);
+  const [componentFilterGroup, setComponentFilterGroup] = useState("");
+  const [componentFilterSubgroup, setComponentFilterSubgroup] = useState("");
+  const [componentSearch, setComponentSearch] = useState("");
+  const [additiveFilterGroup, setAdditiveFilterGroup] = useState("");
+  const [additiveSearch, setAdditiveSearch] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -231,7 +250,32 @@ export default function RetailProductModal({
     setCompositionMatch(null);
     setFillPreview(null);
     setReferenceSearch(initialProduct?.related_food_product_name || "");
+    setComponentFilterGroup("");
+    setComponentFilterSubgroup("");
+    setComponentSearch("");
+    setAdditiveFilterGroup("");
+    setAdditiveSearch("");
   }, [initialProduct, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    Promise.all([fetchFoodAdditiveGroups(), fetchFoodAdditives()])
+      .then(([groupsData, additivesData]) => {
+        if (cancelled) return;
+        setAdditiveGroups(normalizeList(groupsData));
+        setAllAdditives(normalizeList(additivesData));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAdditiveGroups([]);
+        setAllAdditives([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const groups = useMemo(() => {
     const map = new Map();
@@ -252,6 +296,19 @@ export default function RetailProductModal({
     return Array.from(map.values()).sort((left, right) => String(left.name).localeCompare(String(right.name), "ru"));
   }, [catalogProducts, draft.related_food_group]);
 
+  const componentFilterSubgroups = useMemo(() => {
+    const map = new Map();
+    for (const item of catalogProducts || []) {
+      if (!item?.subtypeId) continue;
+      if (componentFilterGroup && String(item.typeId) !== String(componentFilterGroup)) continue;
+      map.set(String(item.subtypeId), {
+        id: item.subtypeId,
+        name: item.subtypeName || `Подгруппа #${item.subtypeId}`,
+      });
+    }
+    return Array.from(map.values()).sort((left, right) => String(left.name).localeCompare(String(right.name), "ru"));
+  }, [catalogProducts, componentFilterGroup]);
+
   const referenceOptions = useMemo(() => {
     const search = String(referenceSearch || "").trim().toLowerCase();
     return (catalogProducts || [])
@@ -267,6 +324,36 @@ export default function RetailProductModal({
   const selectedReferenceProduct = useMemo(() => (
     (catalogProducts || []).find((item) => String(item.id) === String(draft.related_food_product)) || null
   ), [catalogProducts, draft.related_food_product]);
+
+  const manualComponentOptions = useMemo(() => {
+    const selectedIds = new Set((draft.components || []).map((item) => String(item.food_component_id)));
+    const search = normalizeSearchText(componentSearch);
+    return (catalogProducts || [])
+      .filter((item) => {
+        if (selectedIds.has(String(item.id))) return false;
+        if (componentFilterGroup && String(item.typeId) !== String(componentFilterGroup)) return false;
+        if (componentFilterSubgroup && String(item.subtypeId) !== String(componentFilterSubgroup)) return false;
+        if (search && !normalizeSearchText(item.name).includes(search)) return false;
+        return true;
+      })
+      .slice(0, 40);
+  }, [catalogProducts, componentFilterGroup, componentFilterSubgroup, componentSearch, draft.components]);
+
+  const additiveOptions = useMemo(() => {
+    const selectedIds = new Set((draft.additives || []).map((item) => String(item.food_additive_id)));
+    const search = normalizeSearchText(additiveSearch);
+    const normalizedCodeSearch = search.replace(/\s+/g, "");
+    return (allAdditives || [])
+      .filter((item) => {
+        if (selectedIds.has(String(item.id))) return false;
+        if (additiveFilterGroup && String(item.group) !== String(additiveFilterGroup)) return false;
+        if (!search) return true;
+        const code = normalizeSearchText(item.code).replace(/\s+/g, "");
+        const name = normalizeSearchText(item.name);
+        return code.includes(normalizedCodeSearch) || name.includes(search);
+      })
+      .slice(0, 40);
+  }, [additiveFilterGroup, additiveSearch, allAdditives, draft.additives]);
 
   const requiredReady = useMemo(() => {
     const hasName = Boolean(String(draft.name || "").trim());
@@ -400,10 +487,47 @@ export default function RetailProductModal({
     }));
   };
 
+  const addManualComponent = (product) => {
+    if (!product) return;
+    setDraft((current) => ({
+      ...current,
+      components: [
+        ...current.components,
+        {
+          food_component_id: product.id,
+          food_component_name: product.name,
+          component_text: product.name,
+          position_index: null,
+          match_confidence: null,
+          matched_by: "manual",
+        },
+      ],
+    }));
+  };
+
   const removeAdditive = (foodAdditiveId) => {
     setDraft((current) => ({
       ...current,
       additives: current.additives.filter((item) => String(item.food_additive_id) !== String(foodAdditiveId)),
+    }));
+  };
+
+  const addManualAdditive = (additive) => {
+    if (!additive) return;
+    setDraft((current) => ({
+      ...current,
+      additives: [
+        ...current.additives,
+        {
+          food_additive_id: additive.id,
+          food_additive_name: additive.name,
+          food_additive_code: additive.code,
+          additive_text: additive.code || additive.name,
+          position_index: null,
+          match_confidence: null,
+          matched_by: "manual",
+        },
+      ],
     }));
   };
 
@@ -708,7 +832,7 @@ export default function RetailProductModal({
 
             {compositionMatch && (
               <div style={{ color: "#555", fontSize: 13 }}>
-                Автоматически выделены компоненты и пищевые добавки. Ниже можно убрать лишние совпадения перед сохранением.
+                Автоматически выделены компоненты и пищевые добавки. Ниже можно убрать лишние совпадения или добавить недостающие элементы вручную.
               </div>
             )}
 
@@ -729,6 +853,69 @@ export default function RetailProductModal({
               </div>
 
               <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 700 }}>Добавить базовый продукт вручную</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
+                  <select
+                    style={input}
+                    value={componentFilterGroup}
+                    onChange={(event) => {
+                      setComponentFilterGroup(event.target.value);
+                      setComponentFilterSubgroup("");
+                    }}
+                  >
+                    <option value="">Все группы</option>
+                    {groups.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                  <select
+                    style={input}
+                    value={componentFilterSubgroup}
+                    onChange={(event) => setComponentFilterSubgroup(event.target.value)}
+                  >
+                    <option value="">Все подгруппы</option>
+                    {componentFilterSubgroups.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  style={input}
+                  value={componentSearch}
+                  onChange={(event) => setComponentSearch(event.target.value)}
+                  placeholder="Поиск по названию базового продукта"
+                />
+                <div style={{ maxHeight: 220, overflow: "auto", display: "grid", gap: 6 }}>
+                  {manualComponentOptions.length === 0 ? (
+                    <div style={{ color: "#666", fontSize: 13 }}>Подходящие базовые продукты не найдены.</div>
+                  ) : (
+                    manualComponentOptions.map((item) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr auto",
+                          gap: 8,
+                          alignItems: "center",
+                          border: "1px solid #f0f2f5",
+                          borderRadius: 10,
+                          padding: 10,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{item.name}</div>
+                          <div style={{ color: "#666", fontSize: 12 }}>{item.subtypeName || item.typeName || "Без подгруппы"}</div>
+                        </div>
+                        <button type="button" style={btn} onClick={() => addManualComponent(item)}>
+                          Добавить
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, display: "grid", gap: 8 }}>
                 <div style={{ fontWeight: 700 }}>Найденные пищевые добавки</div>
                 {draft.additives.length === 0 ? (
                   <div style={{ color: "#666", fontSize: 13 }}>Пока ничего не найдено.</div>
@@ -743,6 +930,58 @@ export default function RetailProductModal({
                     <button type="button" style={btn} onClick={() => removeAdditive(item.food_additive_id)}>Убрать</button>
                   </div>
                 ))}
+              </div>
+
+              <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 700 }}>Добавить пищевую добавку вручную</div>
+                <select
+                  style={input}
+                  value={additiveFilterGroup}
+                  onChange={(event) => setAdditiveFilterGroup(event.target.value)}
+                >
+                  <option value="">Все группы добавок</option>
+                  {additiveGroups.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+                <input
+                  style={input}
+                  value={additiveSearch}
+                  onChange={(event) => setAdditiveSearch(event.target.value)}
+                  placeholder="Поиск по E-коду или названию добавки"
+                />
+                <div style={{ maxHeight: 220, overflow: "auto", display: "grid", gap: 6 }}>
+                  {additiveOptions.length === 0 ? (
+                    <div style={{ color: "#666", fontSize: 13 }}>Подходящие пищевые добавки не найдены.</div>
+                  ) : (
+                    additiveOptions.map((item) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr auto",
+                          gap: 8,
+                          alignItems: "center",
+                          border: "1px solid #f0f2f5",
+                          borderRadius: 10,
+                          padding: 10,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600 }}>
+                            {item.code ? `${item.code} · ` : ""}{item.name}
+                          </div>
+                          <div style={{ color: "#666", fontSize: 12 }}>
+                            {additiveGroups.find((group) => String(group.id) === String(item.group))?.name || "Без группы"}
+                          </div>
+                        </div>
+                        <button type="button" style={btn} onClick={() => addManualAdditive(item)}>
+                          Добавить
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </div>
