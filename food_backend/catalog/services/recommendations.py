@@ -234,12 +234,18 @@ def is_blocked(
 
     raw_allergens = _product_get(product, "allergens") or []
     product_allergen_ids = set()
+    has_additive_allergen = False
     for allergen in raw_allergens:
         if isinstance(allergen, dict) and allergen.get("id") is not None:
             product_allergen_ids.add(int(allergen["id"]))
+            if allergen.get("scope") == "additive":
+                has_additive_allergen = True
 
     if profile_allergen_ids and product_allergen_ids and (profile_allergen_ids & product_allergen_ids):
         return True, ["Продукт исключён: содержит аллерген, отмеченный в профиле пользователя."]
+
+    if profile_allergen_ids and has_additive_allergen:
+        return True, ["Продукт исключён: содержит аллергенную пищевую добавку, а в профиле пользователя включены ограничения по аллергенам."]
 
     if profile.has_minor_children:
         child_allowed = _product_get(product, "is_child_allowed", "isChildAllowed")

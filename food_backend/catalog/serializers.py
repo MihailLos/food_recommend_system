@@ -11,6 +11,7 @@ from catalog.utils.allergens import get_allergens_for_product
 from catalog.utils.child_rules import pick_not_child_rule
 from catalog.utils.energy_calc import calculate_bmi, calculate_tdee_for_profile
 from catalog.services.retail_rules import apply_retail_product_readiness
+from catalog.services.retail_rules import get_retail_product_allergens, is_retail_product_child_allowed
 from catalog.services.retail_nutrition import RETAIL_NUTRIENT_FIELDS
 
 User = get_user_model()
@@ -251,6 +252,9 @@ class RetailFoodProductSerializer(serializers.ModelSerializer):
     related_food_product_name = serializers.CharField(source="related_food_product.name", read_only=True)
     components = serializers.SerializerMethodField()
     additives = serializers.SerializerMethodField()
+    allergens = serializers.SerializerMethodField()
+    is_allergen = serializers.SerializerMethodField()
+    is_child_allowed = serializers.SerializerMethodField()
 
     class Meta:
         model = RetailFoodProduct
@@ -279,10 +283,22 @@ class RetailFoodProductSerializer(serializers.ModelSerializer):
             "name_ocr_raw",
             "composition_ocr_raw",
             "nutrition_ocr_raw",
+            "allergens",
+            "is_allergen",
+            "is_child_allowed",
             "components",
             "additives",
         ]
         read_only_fields = ["created_by_user", "created_at", "updated_at", "is_ready_for_recommendation", "status"]
+
+    def get_allergens(self, obj):
+        return get_retail_product_allergens(obj)
+
+    def get_is_allergen(self, obj):
+        return len(get_retail_product_allergens(obj)) > 0
+
+    def get_is_child_allowed(self, obj):
+        return is_retail_product_child_allowed(obj)
 
     def get_components(self, obj):
         rows = obj.retail_components.all().order_by("position_index", "id")

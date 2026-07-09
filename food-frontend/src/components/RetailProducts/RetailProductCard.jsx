@@ -37,7 +37,27 @@ export default function RetailProductCard({ product, onEdit, onDelete }) {
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 18 }}>{product?.name || "Без названия"}</div>
+          <div style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.35 }}>
+            {product?.name || "Без названия"}
+            {product?.is_allergen && (
+              <span
+                style={{ marginLeft: 6, cursor: "help" }}
+                title="Содержит аллерген(ы)"
+                aria-label="Содержит аллерген(ы)"
+              >
+                🦠
+              </span>
+            )}
+            {product?.is_child_allowed && (
+              <span
+                style={{ marginLeft: 6, cursor: "help" }}
+                title="Может применяться при организации питания детей"
+                aria-label="Может применяться при организации питания детей"
+              >
+                👶
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
             {product?.related_food_product_name
               ? `Эталонный продукт: ${product.related_food_product_name}`
@@ -90,9 +110,14 @@ export default function RetailProductCard({ product, onEdit, onDelete }) {
             Часть нутриентов заполнена из эталона
           </span>
         )}
-        {Array.isArray(product?.additives) && product.additives.length > 0 && (
+        {product?.is_allergen && (
           <span style={{ padding: "5px 10px", borderRadius: 999, background: "rgba(220,53,69,0.08)", color: "#a23442", fontSize: 12 }}>
-            Найдены пищевые добавки
+            Есть аллергенные ограничения
+          </span>
+        )}
+        {product?.is_child_allowed && (
+          <span style={{ padding: "5px 10px", borderRadius: 999, background: "rgba(30,96,217,0.08)", color: "#1f3b67", fontSize: 12 }}>
+            Подходит для детского питания
           </span>
         )}
       </div>
