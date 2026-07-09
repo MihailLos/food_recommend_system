@@ -105,6 +105,11 @@ const steps = [
   "Проверка и сохранение",
 ];
 
+const referenceModes = {
+  AUTO: "auto",
+  MANUAL: "manual",
+};
+
 function makeEmptyDraft() {
   return {
     name: "",
@@ -207,6 +212,8 @@ export default function RetailProductModal({
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [referenceMode, setReferenceMode] = useState(referenceModes.AUTO);
+  const [manualSelectionUnlocked, setManualSelectionUnlocked] = useState(false);
   const [nameMatch, setNameMatch] = useState(null);
   const [compositionMatch, setCompositionMatch] = useState(null);
   const [fillPreview, setFillPreview] = useState(null);
@@ -218,10 +225,12 @@ export default function RetailProductModal({
     setStep(0);
     setLoading(false);
     setError("");
+    setReferenceMode(initialProduct?.product_match_confidence ? referenceModes.AUTO : referenceModes.MANUAL);
+    setManualSelectionUnlocked(!initialProduct?.product_match_confidence);
     setNameMatch(null);
     setCompositionMatch(null);
     setFillPreview(null);
-    setReferenceSearch("");
+    setReferenceSearch(initialProduct?.related_food_product_name || "");
   }, [initialProduct, open]);
 
   const groups = useMemo(() => {
@@ -255,6 +264,10 @@ export default function RetailProductModal({
       .slice(0, 60);
   }, [catalogProducts, draft.related_food_group, draft.related_food_subgroup, referenceSearch]);
 
+  const selectedReferenceProduct = useMemo(() => (
+    (catalogProducts || []).find((item) => String(item.id) === String(draft.related_food_product)) || null
+  ), [catalogProducts, draft.related_food_product]);
+
   const requiredReady = useMemo(() => {
     const hasName = Boolean(String(draft.name || "").trim());
     const hasCoreNutrients = ["energy_kcal", "protein_g", "fats_g", "carbs_g"].some(
@@ -269,6 +282,20 @@ export default function RetailProductModal({
     setDraft((current) => ({ ...current, [fieldName]: value }));
   };
 
+  const applyReferenceProductSelection = (product, options = {}) => {
+    if (!product) return;
+    setDraft((current) => ({
+      ...current,
+      related_food_product: product.id,
+      related_food_group: product.typeId || "",
+      related_food_subgroup: product.subtypeId || "",
+      group_match_confidence: options.keepConfidence ? current.group_match_confidence : null,
+      subgroup_match_confidence: options.keepConfidence ? current.subgroup_match_confidence : null,
+      product_match_confidence: options.keepConfidence ? current.product_match_confidence : null,
+      match_method: options.matchMethod || "manual",
+    }));
+  };
+
   const handleMatchName = async () => {
     if (!String(draft.name || "").trim()) {
       setError("Сначала введи название продукта.");
@@ -279,15 +306,29 @@ export default function RetailProductModal({
     try {
       const result = await matchRetailName(draft.name);
       setNameMatch(result);
+      setReferenceMode(referenceModes.AUTO);
+      setManualSelectionUnlocked(false);
+      setReferenceSearch(result?.suggested_product?.name || "");
+      if (result?.suggested_product?.id) {
+        const matchedProduct = (catalogProducts || []).find((item) => String(item.id) === String(result.suggested_product.id));
+        if (matchedProduct) {
+          applyReferenceProductSelection(matchedProduct, { matchMethod: "auto_confirmed", keepConfidence: true });
+        } else {
+          setDraft((current) => ({
+            ...current,
+            related_food_product: result.suggested_product.id,
+            group_match_confidence: result?.suggested_group?.confidence ?? current.group_match_confidence,
+            subgroup_match_confidence: result?.suggested_subgroup?.confidence ?? current.subgroup_match_confidence,
+            product_match_confidence: result?.suggested_product?.confidence ?? current.product_match_confidence,
+            match_method: "auto_confirmed",
+          }));
+        }
+      }
       setDraft((current) => ({
         ...current,
-        related_food_group: result?.suggested_group?.id || current.related_food_group,
-        related_food_subgroup: result?.suggested_subgroup?.id || current.related_food_subgroup,
-        related_food_product: result?.suggested_product?.id || current.related_food_product,
         group_match_confidence: result?.suggested_group?.confidence ?? current.group_match_confidence,
         subgroup_match_confidence: result?.suggested_subgroup?.confidence ?? current.subgroup_match_confidence,
         product_match_confidence: result?.suggested_product?.confidence ?? current.product_match_confidence,
-        match_method: "auto_confirmed",
       }));
     } catch (requestError) {
       setError(requestError?.response?.data?.detail || requestError?.message || "Не удалось подобрать эталон.");
@@ -460,7 +501,7 @@ export default function RetailProductModal({
 
         {step === 0 && (
           <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ display: "grid", gap: 6 }}>
               <label>Название продукта</label>
               <input
                 style={input}
@@ -470,96 +511,180 @@ export default function RetailProductModal({
               />
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" style={{ ...btn, borderColor: "#2e7d32", color: "#1f5f26" }} onClick={handleMatchName} disabled={loading}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+              <button
+                type="button"
+                style={{
+                  ...btn,
+                  borderColor: referenceMode === referenceModes.AUTO ? "#2e7d32" : "#d5dbe3",
+                  background: referenceMode === referenceModes.AUTO ? "rgba(46,125,50,0.08)" : "#fff",
+                  color: "#1f5f26",
+                  fontWeight: 700,
+                }}
+                onClick={handleMatchName}
+                disabled={loading}
+              >
                 Подобрать эталон по названию
+              </button>
+              <button
+                type="button"
+                style={{
+                  ...btn,
+                  borderColor: referenceMode === referenceModes.MANUAL ? "#2e7d32" : "#d5dbe3",
+                  background: referenceMode === referenceModes.MANUAL ? "rgba(46,125,50,0.08)" : "#fff",
+                  color: "#1f5f26",
+                  fontWeight: 700,
+                }}
+                onClick={() => {
+                  setReferenceMode(referenceModes.MANUAL);
+                  setManualSelectionUnlocked(true);
+                  setNameMatch(null);
+                }}
+              >
+                Подобрать эталонный продукт вручную
               </button>
             </div>
 
-            {nameMatch && (
-              <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, background: "#fafcfd", display: "grid", gap: 8 }}>
-                <div style={{ fontWeight: 700 }}>Предполагаемые совпадения</div>
-                <div style={{ fontSize: 13, color: "#555" }}>
-                  {nameMatch.suggested_group && `Группа: ${nameMatch.suggested_group.name} (${Math.round(nameMatch.suggested_group.confidence * 100)}%)`}
-                  {nameMatch.suggested_group && nameMatch.suggested_subgroup ? " · " : ""}
-                  {nameMatch.suggested_subgroup && `Подгруппа: ${nameMatch.suggested_subgroup.name} (${Math.round(nameMatch.suggested_subgroup.confidence * 100)}%)`}
-                  {nameMatch.suggested_product && ` · Эталон: ${nameMatch.suggested_product.name} (${Math.round(nameMatch.suggested_product.confidence * 100)}%)`}
+            {referenceMode === referenceModes.AUTO && (
+              <div style={{ border: "1px solid #dfe9df", borderRadius: 14, padding: 16, background: "#f8fcf8", display: "grid", gap: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ fontWeight: 700 }}>Автоматически подобранный эталон</div>
+                  <button
+                    type="button"
+                    style={btn}
+                    onClick={() => {
+                      setReferenceMode(referenceModes.MANUAL);
+                      setManualSelectionUnlocked(true);
+                    }}
+                  >
+                    Изменить подбор
+                  </button>
                 </div>
+                {selectedReferenceProduct ? (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 22, fontWeight: 700 }}>{selectedReferenceProduct.name}</div>
+                    <div style={{ color: "#555", fontSize: 14 }}>
+                      Группа: <strong>{selectedReferenceProduct.typeName || "—"}</strong>
+                    </div>
+                    <div style={{ color: "#555", fontSize: 14 }}>
+                      Подгруппа: <strong>{selectedReferenceProduct.subtypeName || "—"}</strong>
+                    </div>
+                    <div style={{ color: "#555", fontSize: 13 }}>
+                      {nameMatch?.suggested_product?.confidence != null && (
+                        <>Совпадение по продукту: <strong>{Math.round(nameMatch.suggested_product.confidence * 100)}%</strong></>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: "#666", lineHeight: 1.5 }}>
+                    {nameMatch?.suggested_product
+                      ? `Автоподбор нашел эталон «${nameMatch.suggested_product.name}», но он не был найден в локальном каталоге.`
+                      : "Автоподбор пока не выбрал эталонный продукт."}
+                  </div>
+                )}
+                {nameMatch && (
+                  <div style={{ fontSize: 13, color: "#666", lineHeight: 1.5 }}>
+                    {nameMatch.suggested_group && <>Группа-кандидат: {nameMatch.suggested_group.name}.</>}
+                    {nameMatch.suggested_subgroup && <> Подгруппа-кандидат: {nameMatch.suggested_subgroup.name}.</>}
+                  </div>
+                )}
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-              <div style={{ display: "grid", gap: 6 }}>
-                <label>Группа</label>
-                <select
-                  style={input}
-                  value={draft.related_food_group}
-                  onChange={(event) => {
-                    applyField("related_food_group", event.target.value);
-                    applyField("related_food_subgroup", "");
-                    applyField("related_food_product", "");
-                  }}
-                >
-                  <option value="">Не выбрана</option>
-                  {groups.map((item) => (
-                    <option key={item.id} value={item.id}>{item.name}</option>
-                  ))}
-                </select>
-              </div>
+            {referenceMode === referenceModes.MANUAL && (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ color: "#555", fontSize: 13, lineHeight: 1.5 }}>
+                  В ручном режиме выбирается только эталонный продукт. Группа и подгруппа используются только как фильтры для удобного поиска.
+                </div>
 
-              <div style={{ display: "grid", gap: 6 }}>
-                <label>Подгруппа</label>
-                <select
-                  style={input}
-                  value={draft.related_food_subgroup}
-                  onChange={(event) => {
-                    applyField("related_food_subgroup", event.target.value);
-                    applyField("related_food_product", "");
-                  }}
-                >
-                  <option value="">Не выбрана</option>
-                  {subgroups.map((item) => (
-                    <option key={item.id} value={item.id}>{item.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gap: 6 }}>
-              <label>Поиск эталонного продукта</label>
-              <input
-                style={input}
-                value={referenceSearch}
-                onChange={(event) => setReferenceSearch(event.target.value)}
-                placeholder="Начни вводить название"
-              />
-              <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid #edf0f2", borderRadius: 12, padding: 8, display: "grid", gap: 6 }}>
-                {referenceOptions.length === 0 ? (
-                  <div style={{ color: "#666", fontSize: 13 }}>Ничего не найдено.</div>
-                ) : (
-                  referenceOptions.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      style={{
-                        ...btn,
-                        textAlign: "left",
-                        borderColor: String(draft.related_food_product) === String(item.id) ? "#2e7d32" : "#e3e7ec",
-                        background: String(draft.related_food_product) === String(item.id) ? "rgba(46,125,50,0.07)" : "#fff",
-                      }}
-                      onClick={() => {
-                        applyField("related_food_product", item.id);
-                        applyField("related_food_group", item.typeId || "");
-                        applyField("related_food_subgroup", item.subtypeId || "");
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <label>Фильтр по группе</label>
+                    <select
+                      style={input}
+                      value={draft.related_food_group}
+                      disabled={!manualSelectionUnlocked}
+                      onChange={(event) => {
+                        applyField("related_food_group", event.target.value);
+                        applyField("related_food_subgroup", "");
                       }}
                     >
-                      <div style={{ fontWeight: 600 }}>{item.name}</div>
-                      <div style={{ color: "#666", fontSize: 12 }}>{item.subtypeName || item.typeName || "Без подгруппы"}</div>
-                    </button>
-                  ))
-                )}
+                      <option value="">Все группы</option>
+                      {groups.map((item) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <label>Фильтр по подгруппе</label>
+                    <select
+                      style={input}
+                      value={draft.related_food_subgroup}
+                      disabled={!manualSelectionUnlocked}
+                      onChange={(event) => {
+                        applyField("related_food_subgroup", event.target.value);
+                      }}
+                    >
+                      <option value="">Все подгруппы</option>
+                      {subgroups.map((item) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <label>Поиск эталонного продукта</label>
+                  <input
+                    style={input}
+                    value={referenceSearch}
+                    disabled={!manualSelectionUnlocked}
+                    onChange={(event) => setReferenceSearch(event.target.value)}
+                    placeholder="Начни вводить название"
+                  />
+                  <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid #edf0f2", borderRadius: 12, padding: 8, display: "grid", gap: 6 }}>
+                    {referenceOptions.length === 0 ? (
+                      <div style={{ color: "#666", fontSize: 13 }}>Ничего не найдено.</div>
+                    ) : (
+                      referenceOptions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          disabled={!manualSelectionUnlocked}
+                          style={{
+                            ...btn,
+                            textAlign: "left",
+                            borderColor: String(draft.related_food_product) === String(item.id) ? "#2e7d32" : "#e3e7ec",
+                            background: String(draft.related_food_product) === String(item.id) ? "rgba(46,125,50,0.07)" : "#fff",
+                          }}
+                          onClick={() => {
+                            applyReferenceProductSelection(item, { matchMethod: "manual" });
+                          }}
+                        >
+                          <div style={{ fontWeight: 600 }}>{item.name}</div>
+                          <div style={{ color: "#666", fontSize: 12 }}>{item.subtypeName || item.typeName || "Без подгруппы"}</div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, background: "#fafcfd", display: "grid", gap: 6 }}>
+                  <div style={{ fontWeight: 700 }}>Выбранный эталонный продукт</div>
+                  {selectedReferenceProduct ? (
+                    <>
+                      <div style={{ fontSize: 18, fontWeight: 700 }}>{selectedReferenceProduct.name}</div>
+                      <div style={{ color: "#555", fontSize: 13 }}>
+                        {selectedReferenceProduct.typeName || "Без группы"} · {selectedReferenceProduct.subtypeName || "Без подгруппы"}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 13, color: "#666" }}>Эталонный продукт пока не выбран.</div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
