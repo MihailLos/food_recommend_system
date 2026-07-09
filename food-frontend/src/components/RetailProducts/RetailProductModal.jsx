@@ -380,6 +380,22 @@ export default function RetailProductModal({
 
   const hasReferenceProduct = Boolean(draft.related_food_product);
 
+  const filledNutrientGroups = useMemo(() => (
+    nutrientSections
+      .map((section) => ({
+        title: section.title,
+        items: section.fields
+          .filter(([fieldName]) => normalizeNumber(draft[fieldName]) !== null)
+          .map(([fieldName, label, unit]) => ({
+            fieldName,
+            label,
+            unit,
+            value: draft[fieldName],
+          })),
+      }))
+      .filter((section) => section.items.length > 0)
+  ), [draft]);
+
   if (!open) return null;
 
   const applyField = (fieldName, value) => {
@@ -1134,13 +1150,27 @@ export default function RetailProductModal({
               </div>
             </div>
 
-            <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, display: "grid", gap: 8 }}>
-              <div style={{ fontWeight: 700 }}>Краткое резюме</div>
+            <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, display: "grid", gap: 10 }}>
+              <div style={{ fontWeight: 700 }}>Предпросмотр создания</div>
               <div>Название: <strong>{draft.name || "—"}</strong></div>
-              <div>Эталонный продукт: <strong>{draft.related_food_product || "не выбран"}</strong></div>
+              <div>Эталонный продукт: <strong>{selectedReferenceProduct?.name || "не выбран"}</strong></div>
               <div>Компонентов найдено: <strong>{draft.components.length}</strong></div>
               <div>Добавок найдено: <strong>{draft.additives.length}</strong></div>
-              <div>Режим заполнения нутриентов: <strong>{draft.nutrition_fill_mode}</strong></div>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 600 }}>Заполненные пищевые вещества</div>
+                {filledNutrientGroups.length === 0 ? (
+                  <div style={{ fontSize: 13, color: "#666" }}>Пока не заполнено ни одного пищевого вещества.</div>
+                ) : (
+                  filledNutrientGroups.map((section) => (
+                    <div key={section.title} style={{ display: "grid", gap: 4 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#444" }}>{section.title}</div>
+                      <div style={{ fontSize: 13, color: "#555", lineHeight: 1.5 }}>
+                        {section.items.map((item) => `${item.label}${item.unit ? ` (${item.unit})` : ""}`).join(", ")}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}
