@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.db.models import Max
 from decimal import Decimal
 from .models import (FoodProductTypes, FoodProducts, Macronutrients, Minerals,
                      Vitamins, OtherNutrients, FatAcids, FoodProductSubtypes, Allergen, ConsumerProfile, WorkActivityGroup,
@@ -346,8 +347,10 @@ class RetailFoodProductWriteSerializer(serializers.ModelSerializer):
         if additives_data is None:
             return
         RetailFoodProductAdditive.objects.filter(retail_fp=retail_product).delete()
+        next_id = (RetailFoodProductAdditive.objects.aggregate(max_id=Max("id"))["max_id"] or 0) + 1
         rows = [
             RetailFoodProductAdditive(
+                id=next_id + index,
                 retail_fp=retail_product,
                 food_additive_id=item["food_additive_id"],
                 additive_text=item.get("additive_text"),
@@ -355,7 +358,7 @@ class RetailFoodProductWriteSerializer(serializers.ModelSerializer):
                 match_confidence=item.get("match_confidence"),
                 matched_by=item.get("matched_by"),
             )
-            for item in additives_data
+            for index, item in enumerate(additives_data)
         ]
         if rows:
             RetailFoodProductAdditive.objects.bulk_create(rows)
