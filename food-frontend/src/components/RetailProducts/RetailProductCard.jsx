@@ -82,7 +82,7 @@ export default function RetailProductCard({ product, onEdit, onDelete }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
         <div style={{ border: "1px solid #f0f0f0", borderRadius: 10, padding: 10 }}>
-          <div style={{ fontSize: 12, color: "#666" }}>Энергия</div>
+          <div style={{ fontSize: 12, color: "#666" }}>Энергетическая ценность</div>
           <div style={{ fontWeight: 700 }}>{fmt(product?.energy_kcal)} ккал</div>
         </div>
         <div style={{ border: "1px solid #f0f0f0", borderRadius: 10, padding: 10 }}>

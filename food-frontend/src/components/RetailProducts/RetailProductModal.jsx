@@ -50,7 +50,7 @@ const btn = {
 
 const nutrientSections = [
   {
-    title: "Базовая пищевая ценность",
+    title: "Макронутриенты",
     fields: [
       ["energy_kcal", "Энергетическая ценность", "ккал"],
       ["protein_g", "Белки", "г"],
@@ -63,7 +63,7 @@ const nutrientSections = [
     ],
   },
   {
-    title: "Минералы",
+    title: "Минеральные вещества",
     fields: [
       ["na_mg", "Натрий", "мг"],
       ["k_mg", "Калий", "мг"],
@@ -668,9 +668,6 @@ export default function RetailProductModal({
           <div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>
               {draft.id ? "Редактирование магазинного продукта" : "Добавление магазинного продукта"}
-            </div>
-            <div style={{ color: "#666", marginTop: 4 }}>
-              Пока без камеры: все данные вводятся вручную, но название, состав и нутриенты можно частично подтянуть автоматически.
             </div>
           </div>
           <button type="button" style={btn} onClick={onClose}>Закрыть</button>

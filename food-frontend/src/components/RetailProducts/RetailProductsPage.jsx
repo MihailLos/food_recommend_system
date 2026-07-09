@@ -85,8 +85,8 @@ export default function RetailProductsPage({ catalogProducts }) {
           <div>
             <div style={{ fontWeight: 700, fontSize: 22 }}>Каталог магазинных продуктов</div>
             <div style={{ color: "#555", lineHeight: 1.55, marginTop: 6 }}>
-              Здесь хранятся твои продукты с упаковки. Они не попадают в общий справочник и используются
-              только в рамках твоего аккаунта.
+              Здесь хранятся ваши продукты с упаковки. Они не попадают в общий справочник и используются
+              только в рамках вашего аккаунта.
             </div>
           </div>
           <button type="button" style={{ ...btn, borderColor: "#2e7d32", color: "#1f5f26", fontWeight: 700 }} onClick={openCreate}>

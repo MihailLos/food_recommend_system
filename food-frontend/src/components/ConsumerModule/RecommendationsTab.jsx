@@ -316,7 +316,7 @@ function SignalTable({ signals }) {
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr>
-            {["Нутриент", "Роль", "В 100 г", "Суточный ориентир", "Доля ориентира", "Положение", "Квартильный балл"].map((head) => (
+            {["Пищевое вещество", "Роль", "В 100 г", "Суточный ориентир", "Доля ориентира", "Положение", "Квартильный балл"].map((head) => (
               <th key={head} style={{ textAlign: "left", padding: "8px 6px", borderBottom: "1px solid #eee" }}>
                 {head}
               </th>
