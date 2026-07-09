@@ -120,7 +120,7 @@ function makeEmptyDraft() {
     related_food_subgroup: "",
     related_food_product: "",
     visibility: "private",
-    nutrition_fill_mode: "label_only",
+    nutrition_fill_mode: "manual",
     match_method: "manual",
     group_match_confidence: null,
     subgroup_match_confidence: null,
@@ -168,6 +168,7 @@ function hydrateDraft(product) {
   return {
     ...draft,
     ...product,
+    nutrition_fill_mode: product.nutrition_fill_mode === "label_plus_reference" ? "label_plus_reference" : "manual",
     related_food_group: product.related_food_group || "",
     related_food_subgroup: product.related_food_subgroup || "",
     related_food_product: product.related_food_product || "",
@@ -213,6 +214,10 @@ function normalizeSearchText(value) {
   return String(value || "").trim().toLowerCase().replace(/ё/g, "е");
 }
 
+function getNutritionFieldNames() {
+  return nutrientSections.flatMap((section) => section.fields.map(([fieldName]) => fieldName));
+}
+
 export default function RetailProductModal({
   open,
   onClose,
@@ -229,6 +234,8 @@ export default function RetailProductModal({
   const [nameMatch, setNameMatch] = useState(null);
   const [compositionMatch, setCompositionMatch] = useState(null);
   const [fillPreview, setFillPreview] = useState(null);
+  const [previewPlaceholders, setPreviewPlaceholders] = useState({});
+  const [autoFilledFieldNames, setAutoFilledFieldNames] = useState([]);
   const [referenceSearch, setReferenceSearch] = useState("");
   const [additiveGroups, setAdditiveGroups] = useState([]);
   const [allAdditives, setAllAdditives] = useState([]);
@@ -249,6 +256,8 @@ export default function RetailProductModal({
     setNameMatch(null);
     setCompositionMatch(null);
     setFillPreview(null);
+    setPreviewPlaceholders({});
+    setAutoFilledFieldNames([]);
     setReferenceSearch(initialProduct?.related_food_product_name || "");
     setComponentFilterGroup("");
     setComponentFilterSubgroup("");
@@ -325,6 +334,12 @@ export default function RetailProductModal({
     (catalogProducts || []).find((item) => String(item.id) === String(draft.related_food_product)) || null
   ), [catalogProducts, draft.related_food_product]);
 
+  useEffect(() => {
+    setFillPreview(null);
+    setPreviewPlaceholders({});
+    setAutoFilledFieldNames([]);
+  }, [draft.related_food_product]);
+
   const manualComponentOptions = useMemo(() => {
     const selectedIds = new Set((draft.components || []).map((item) => String(item.food_component_id)));
     const search = normalizeSearchText(componentSearch);
@@ -362,6 +377,8 @@ export default function RetailProductModal({
     );
     return { hasName, hasCoreNutrients, isReady: hasName && hasCoreNutrients };
   }, [draft]);
+
+  const hasReferenceProduct = Boolean(draft.related_food_product);
 
   if (!open) return null;
 
@@ -448,12 +465,16 @@ export default function RetailProductModal({
   };
 
   const handlePreviewFill = async () => {
+    if (!hasReferenceProduct) {
+      setError("Сначала выбери эталонный продукт.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const payload = {
         related_food_product_id: draft.related_food_product || null,
-        nutrition_fill_mode: draft.nutrition_fill_mode,
+        nutrition_fill_mode: "label_plus_reference",
       };
       nutrientSections.forEach((section) => {
         section.fields.forEach(([fieldName]) => {
@@ -462,6 +483,16 @@ export default function RetailProductModal({
       });
       const result = await previewRetailNutritionFill(payload);
       setFillPreview(result);
+      const placeholders = {};
+      for (const fieldName of getNutritionFieldNames()) {
+        if (normalizeNumber(draft[fieldName]) === null) {
+          const previewValue = result?.merged_values?.[fieldName];
+          if (previewValue !== null && previewValue !== undefined && previewValue !== "") {
+            placeholders[fieldName] = String(previewValue);
+          }
+        }
+      }
+      setPreviewPlaceholders(placeholders);
     } catch (requestError) {
       setError(requestError?.response?.data?.detail || requestError?.message || "Не удалось подготовить предпросмотр заполнения.");
     } finally {
@@ -471,13 +502,39 @@ export default function RetailProductModal({
 
   const applyPreviewValues = () => {
     if (!fillPreview?.merged_values) return;
+    const appliedFields = [];
     setDraft((current) => {
       const next = { ...current };
-      Object.entries(fillPreview.merged_values).forEach(([fieldName, value]) => {
-        next[fieldName] = value ?? "";
-      });
+      for (const fieldName of getNutritionFieldNames()) {
+        if (normalizeNumber(current[fieldName]) !== null) continue;
+        const value = fillPreview.merged_values[fieldName];
+        if (value === null || value === undefined || value === "") continue;
+        next[fieldName] = value;
+        appliedFields.push(fieldName);
+      }
+      next.nutrition_fill_mode = appliedFields.length ? "label_plus_reference" : "manual";
       return next;
     });
+    setAutoFilledFieldNames(appliedFields);
+    setPreviewPlaceholders({});
+  };
+
+  const rollbackAutoFilledValues = () => {
+    if (!autoFilledFieldNames.length) return;
+    setDraft((current) => {
+      const next = { ...current };
+      for (const fieldName of autoFilledFieldNames) {
+        const referenceValue = fillPreview?.reference_values?.[fieldName];
+        const currentValue = normalizeNumber(current[fieldName]);
+        const referenceNumber = normalizeNumber(referenceValue);
+        if (currentValue !== null && referenceNumber !== null && currentValue === referenceNumber) {
+          next[fieldName] = "";
+        }
+      }
+      next.nutrition_fill_mode = "manual";
+      return next;
+    });
+    setAutoFilledFieldNames([]);
   };
 
   const removeComponent = (foodComponentId) => {
@@ -989,37 +1046,50 @@ export default function RetailProductModal({
 
         {step === 2 && (
           <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-              <div style={{ display: "grid", gap: 6 }}>
-                <label>Как заполнять пустые поля</label>
-                <select
-                  style={input}
-                  value={draft.nutrition_fill_mode}
-                  onChange={(event) => applyField("nutrition_fill_mode", event.target.value)}
-                >
-                  <option value="label_only">Только данные с маркировки</option>
-                  <option value="label_plus_reference">Дополнить пустые поля из эталона</option>
-                  <option value="reference_only">Взять значения только из эталона</option>
-                  <option value="manual">Полностью вручную</option>
-                </select>
-              </div>
-
-              <div style={{ display: "grid", alignItems: "end" }}>
-                <button type="button" style={{ ...btn, borderColor: "#2e7d32", color: "#1f5f26" }} onClick={handlePreviewFill} disabled={loading}>
-                  Показать, как заполнятся пустые поля
-                </button>
+            <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, display: "grid", gap: 8 }}>
+              <div style={{ fontWeight: 700 }}>Заполнить значения вручную</div>
+              <div style={{ color: "#555", fontSize: 13, lineHeight: 1.5 }}>
+                Это базовый режим. Пользователь вручную вводит те пищевые вещества, которые указаны на упаковке.
               </div>
             </div>
 
-            {fillPreview && (
+            {hasReferenceProduct && (
               <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, background: "#fafcfd", display: "grid", gap: 8 }}>
-                <div style={{ fontWeight: 700 }}>Предпросмотр заполнения</div>
+                <div style={{ fontWeight: 700 }}>Заполнить пустые значения из эталона</div>
                 <div style={{ fontSize: 13, color: "#555" }}>
-                  Если подтвердить, в форму будут подставлены значения из блока <code>merged_values</code>.
+                  Уже введенные вручную значения сохраняются. Из эталонного продукта будут добавлены только пустые поля.
                 </div>
-                <button type="button" style={{ ...btn, width: "fit-content" }} onClick={applyPreviewValues}>
-                  Применить значения
-                </button>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    style={{ ...btn, borderColor: "#2e7d32", color: "#1f5f26" }}
+                    onClick={handlePreviewFill}
+                    disabled={loading}
+                  >
+                    Предпросмотр добавляемых значений
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...btn, borderColor: "#2e7d32", color: "#1f5f26" }}
+                    onClick={applyPreviewValues}
+                    disabled={loading || !fillPreview}
+                  >
+                    Подтвердить добавление
+                  </button>
+                  <button
+                    type="button"
+                    style={btn}
+                    onClick={rollbackAutoFilledValues}
+                    disabled={!autoFilledFieldNames.length}
+                  >
+                    Отменить добавление
+                  </button>
+                </div>
+                {fillPreview && (
+                  <div style={{ fontSize: 12, color: "#666", lineHeight: 1.5 }}>
+                    В предпросмотр сейчас попали только те поля, которые пусты и могут быть дополнены значениями эталонного продукта.
+                  </div>
+                )}
               </div>
             )}
 
@@ -1035,7 +1105,7 @@ export default function RetailProductModal({
                         inputMode="decimal"
                         value={draft[fieldName]}
                         onChange={(event) => applyField(fieldName, event.target.value)}
-                        placeholder={unit}
+                        placeholder={previewPlaceholders[fieldName] || unit}
                       />
                     </label>
                   ))}
