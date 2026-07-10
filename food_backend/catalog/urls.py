@@ -7,6 +7,9 @@ from .views import (FoodProductTypeViewSet, FoodProductViewSet,
                     NutrientDictionaryViewSet, RecommendationsView, FoodProductSubtypeViewSet,
                     CsrfCookieView, RegisterView, LoginView, LogoutView, CurrentUserView)
 from .views import (
+    AdminCatalogGroupViewSet,
+    AdminCatalogProductViewSet,
+    AdminCatalogSubtypeViewSet,
     FoodAdditiveGroupViewSet,
     FoodAdditiveViewSet,
     RetailFoodProductViewSet,
@@ -30,6 +33,9 @@ router.register(r"nutrients-dictionary", NutrientDictionaryViewSet, basename="nu
 router.register(r"food-additive-groups", FoodAdditiveGroupViewSet, basename="food-additive-groups")
 router.register(r"food-additives", FoodAdditiveViewSet, basename="food-additives")
 router.register(r"retail-products", RetailFoodProductViewSet, basename="retail-products")
+router.register(r"admin-catalog/groups", AdminCatalogGroupViewSet, basename="admin-catalog-groups")
+router.register(r"admin-catalog/subgroups", AdminCatalogSubtypeViewSet, basename="admin-catalog-subgroups")
+router.register(r"admin-catalog/products", AdminCatalogProductViewSet, basename="admin-catalog-products")
 
 urlpatterns = [
     path("", include(router.urls)),

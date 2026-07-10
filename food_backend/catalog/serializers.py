@@ -4,7 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.db.models import Max
 from decimal import Decimal
 from .models import (FoodProductTypes, FoodProducts, Macronutrients, Minerals,
-                     Vitamins, OtherNutrients, FatAcids, FoodProductSubtypes, Allergen, ConsumerProfile, WorkActivityGroup,
+                     Vitamins, OtherNutrients, FatAcids, FoodProductSubtypes, Allergen, AllergenProduct, ConsumerProfile, WorkActivityGroup,
                      ProfileAllergen, ConsumerGoal, GoalNutrientPreference, GoalNutrientTarget, NutrientDictionary,
                      FoodAdditiveGroup, FoodAdditive, RetailFoodProduct, RetailFoodProductComponent, RetailFoodProductAdditive)
 from catalog.utils.allergens import get_allergens_for_product
@@ -13,6 +13,7 @@ from catalog.utils.energy_calc import calculate_bmi, calculate_tdee_for_profile
 from catalog.services.retail_rules import apply_retail_product_readiness
 from catalog.services.retail_rules import get_retail_product_allergens, is_retail_product_child_allowed
 from catalog.services.retail_nutrition import RETAIL_NUTRIENT_FIELDS
+from catalog.services.admin_catalog import create_admin_product, update_admin_product
 
 User = get_user_model()
 
@@ -157,6 +158,74 @@ class FoodProductSerializer(serializers.ModelSerializer):
                   "is_allergen",
                   "is_child_allowed",
                   "child_restriction_level"]
+
+
+class AdminNutrientsSerializer(serializers.Serializer):
+    macros = MacronutrientsSerializer(required=False)
+    minerals = MineralsSerializer(required=False)
+    vitamins = VitaminsSerializer(required=False)
+    other_nutrients = OtherNutrientsSerializer(required=False)
+    fat_acids = FatAcidsSerializer(required=False)
+
+
+class AdminFoodProductCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=500)
+    subtype_id = serializers.PrimaryKeyRelatedField(source="subtype", queryset=FoodProductSubtypes.objects.all())
+    is_complex = serializers.IntegerField(required=False, default=0, min_value=0, max_value=1)
+    nutrients = AdminNutrientsSerializer(required=False)
+    allergen_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Allergen.objects.all(),
+        many=True,
+        required=False,
+        default=list,
+    )
+    is_child_allowed = serializers.BooleanField(required=False, default=True)
+
+    def validate_name(self, value):
+        name = value.strip()
+        if not name:
+            raise serializers.ValidationError("Название продукта не может быть пустым.")
+        return name
+
+    def create(self, validated_data):
+        return create_admin_product(validated_data)
+
+
+class AdminFoodProductUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=500, required=False)
+    subtype_id = serializers.PrimaryKeyRelatedField(source="subtype", queryset=FoodProductSubtypes.objects.all(), required=False)
+    is_complex = serializers.IntegerField(required=False, min_value=0, max_value=1)
+    nutrients = AdminNutrientsSerializer(required=False)
+    allergen_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Allergen.objects.all(),
+        many=True,
+        required=False,
+    )
+    is_child_allowed = serializers.BooleanField(required=False)
+
+    def validate_name(self, value):
+        name = value.strip()
+        if not name:
+            raise serializers.ValidationError("Название продукта не может быть пустым.")
+        return name
+
+    def update(self, instance, validated_data):
+        return update_admin_product(instance, validated_data)
+
+
+class AdminFoodProductSerializer(FoodProductSerializer):
+    allergen_ids = serializers.SerializerMethodField()
+
+    class Meta(FoodProductSerializer.Meta):
+        fields = FoodProductSerializer.Meta.fields + ["allergen_ids"]
+
+    def get_allergen_ids(self, obj):
+        return list(
+            AllergenProduct.objects.filter(
+                scope=AllergenProduct.SCOPE_PRODUCT,
+                product=obj,
+            ).values_list("allergen_id", flat=True)
+        )
 
 class AllergenSerializer(serializers.ModelSerializer):
     class Meta:
@@ -684,7 +753,7 @@ class CurrentUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "username", "has_profiles"]
+        fields = ["id", "username", "has_profiles", "is_staff", "is_superuser"]
 
     def get_has_profiles(self, obj):
         return ConsumerProfile.objects.filter(user=obj).exists()

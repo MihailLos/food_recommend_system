@@ -7,6 +7,7 @@ import ColumnPicker from "../components/ColumnPicker";
 import FiltersPanel from "../components/FiltersPanel";
 import SortControl from "../components/SortControl";
 import AddProductModal from "../components/AddProductModal";
+import AdminCatalogModal from "../components/AdminCatalogModal";
 import NutritionCalculatorModal from "../components/NutritionCalculatorModal";
 import RetailProductsPage from "./RetailProducts/RetailProductsPage";
 import { ALL_COLUMNS } from "../config/column";
@@ -59,8 +60,9 @@ function applySort(items, sort) {
 }
 
 
-export default function ProductsPage({ catalogScope, isAuthenticated }) {
+export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
   const [catalogView, setCatalogView] = useState("reference");
+  const isSuperUser = Boolean(user?.is_superuser);
   // поиск по серверу как раньше
   const [search, setSearch] = useState("");
   const debounced = useDebounce(search, 300);
@@ -86,6 +88,8 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
 
   // для модалки
   const [addOpen, setAddOpen] = useState(false);
+  const [adminModalMode, setAdminModalMode] = useState(null);
+  const [adminStatusMessage, setAdminStatusMessage] = useState("");
 
   // уникальные группы для селекта
   const types = useMemo(() => {
@@ -241,6 +245,11 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
     exportJsonToExcel(rows, "catalog_current_view.xlsx");
   };
 
+  const handleAdminDone = (message) => {
+    setAdminModalMode(null);
+    setAdminStatusMessage(`${message} Нажмите «Загрузить исходную базу», чтобы подтянуть серверные изменения в текущий локальный справочник.`);
+  };
+
   return (
     <div className="app-products-layout" data-sidebar={sidebarOpen ? "open" : "closed"}>
       {catalogView === "reference" && isReloading && (
@@ -383,6 +392,13 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
             </button>
 
             <button className="btn" onClick={() => setAddOpen(true)}>Добавить локально</button>
+            {isSuperUser && (
+              <>
+                <button className="btn" onClick={() => setAdminModalMode("add")}>Добавить в серверную базу данных</button>
+                <button className="btn" onClick={() => setAdminModalMode("edit")}>Изменить серверную базу данных</button>
+                <button className="btn btn-danger" onClick={() => setAdminModalMode("delete")}>Удалить продукт из базы данных</button>
+              </>
+            )}
             <button className="btn" onClick={reloadOriginal} disabled={isReloading}>
               {isReloading ? "Загрузка базы..." : "Загрузить исходную базу"}
             </button>
@@ -424,6 +440,9 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
             )}
             {statusMessage && (
               <div style={{ color: "#1f5f26", marginTop: 6 }}>{statusMessage}</div>
+            )}
+            {adminStatusMessage && (
+              <div style={{ color: "#1f5f26", marginTop: 6 }}>{adminStatusMessage}</div>
             )}
             <details style={{ marginTop: 10 }}>
               <summary style={{ cursor: "pointer", color: "#666" }}>Сервисные действия</summary>
@@ -562,13 +581,21 @@ export default function ProductsPage({ catalogScope, isAuthenticated }) {
               );
             })}
 
-            <AddProductModal
+      <AddProductModal
               open={addOpen}
               onClose={() => setAddOpen(false)}
               onSubmit={addProductLocally}
               types={allTypes}
-            />
-	            <NutritionCalculatorModal
+      />
+      {adminModalMode && (
+        <AdminCatalogModal
+          mode={adminModalMode}
+          allItems={allItems}
+          onClose={() => setAdminModalMode(null)}
+          onDone={handleAdminDone}
+        />
+      )}
+      <NutritionCalculatorModal
 	              open={calcOpen}
 	              onClose={() => setCalcOpen(false)}
 	              allProducts={allItems}

@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import BasePermission, IsAuthenticated, AllowAny
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
 from django.utils.decorators import method_decorator
@@ -23,6 +23,7 @@ from .serializers import (FoodProductTypeSerializer, FoodProductSerializer,
                           ConsumerGoalSerializer, GoalNutrientPreferenceSerializer, GoalNutrientTargetSerializer, NutrientDictionarySerializer,
                           RegisterSerializer, LoginSerializer, CurrentUserSerializer,
                           FoodProductSubtypeSerializer, FoodAdditiveGroupSerializer, FoodAdditiveSerializer,
+                          AdminFoodProductCreateSerializer, AdminFoodProductUpdateSerializer, AdminFoodProductSerializer,
                           RetailFoodProductSerializer, RetailFoodProductWriteSerializer,
                           RetailNameMatchRequestSerializer, RetailCompositionMatchRequestSerializer,
                           RetailNutritionFillPreviewSerializer)
@@ -39,7 +40,6 @@ from rest_framework.exceptions import PermissionDenied
 
 from rest_framework.views import APIView
 from django.db import transaction
-from django.db.models import Count, Max
 from django.shortcuts import get_object_or_404
 
 from catalog.utils.allergens import get_allergens_for_product
@@ -54,33 +54,39 @@ from catalog.services.retail_nutrition import (
     preview_fill_missing_retail_nutrients,
 )
 from catalog.services.retail_rules import apply_retail_product_readiness
+from catalog.services.admin_catalog import get_product_delete_blockers
 
 User = get_user_model()
 
 
+class IsSuperUser(BasePermission):
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
+
+
 def _compute_catalog_export_meta():
     """
-    Быстрая сигнатура каталога для фоновой проверки на фронте.
-    Она существенно дешевле полного экспорта, но не гарантирует обнаружение
-    каждой точечной правки значения внутри строки без изменения состава таблиц.
+    Сигнатура серверного каталога для фоновой проверки на фронте.
+    Должна меняться не только при добавлении строк, но и при правке названий,
+    нутриентов, аллергенов и правил детского питания.
     """
     snapshot = {
-        "products": FoodProducts.objects.aggregate(count=Count("id"), max_id=Max("id")),
-        "types": FoodProductTypes.objects.aggregate(count=Count("id"), max_id=Max("id")),
-        "subtypes": FoodProductSubtypes.objects.aggregate(count=Count("id"), max_id=Max("id")),
-        "macros": Macronutrients.objects.aggregate(count=Count("id"), max_id=Max("id")),
-        "minerals": Minerals.objects.aggregate(count=Count("id"), max_id=Max("id")),
-        "vitamins": Vitamins.objects.aggregate(count=Count("id"), max_id=Max("id")),
-        "other_nutrients": OtherNutrients.objects.aggregate(count=Count("id"), max_id=Max("id")),
-        "fat_acids": FatAcids.objects.aggregate(count=Count("id"), max_id=Max("id")),
-        "allergen_rules": AllergenProduct.objects.aggregate(count=Count("id"), max_id=Max("id")),
-        "not_child_rules": NotChildProduct.objects.aggregate(count=Count("id"), max_id=Max("id")),
+        "products": list(FoodProducts.objects.order_by("id").values_list("id", "name", "subtype_id", "is_complex")),
+        "types": list(FoodProductTypes.objects.order_by("id").values_list("id", "name")),
+        "subtypes": list(FoodProductSubtypes.objects.order_by("id").values_list("id", "name", "product_type_id")),
+        "macros": list(Macronutrients.objects.order_by("food_product_id").values_list()),
+        "minerals": list(Minerals.objects.order_by("food_product_id").values_list()),
+        "vitamins": list(Vitamins.objects.order_by("food_product_id").values_list()),
+        "other_nutrients": list(OtherNutrients.objects.order_by("food_product_id").values_list()),
+        "fat_acids": list(FatAcids.objects.order_by("food_product_id").values_list()),
+        "allergen_rules": list(AllergenProduct.objects.order_by("id").values_list("id", "scope", "product_type_id", "product_subtype_id", "product_id", "allergen_id")),
+        "not_child_rules": list(NotChildProduct.objects.order_by("id").values_list("id", "scope", "product_type_id", "product_subtype_id", "product_id")),
     }
     version_seed = json.dumps(snapshot, sort_keys=True, ensure_ascii=False, default=str)
     version = hashlib.sha256(version_seed.encode("utf-8")).hexdigest()[:12]
     return {
         "version": version,
-        "items_count": snapshot["products"]["count"] or 0,
+        "items_count": len(snapshot["products"]),
     }
 
 class FoodProductTypeViewSet(viewsets.ModelViewSet):
@@ -218,6 +224,78 @@ class FoodProductViewSet(viewsets.ModelViewSet):
         resp = Response(meta)
         resp["X-Catalog-Version"] = meta["version"]
         return resp
+
+
+class AdminCatalogGroupViewSet(viewsets.ModelViewSet):
+    queryset = FoodProductTypes.objects.all().order_by("id")
+    serializer_class = FoodProductTypeSerializer
+    permission_classes = [IsSuperUser]
+    pagination_class = None
+
+
+class AdminCatalogSubtypeViewSet(viewsets.ModelViewSet):
+    queryset = FoodProductSubtypes.objects.select_related("product_type").all().order_by("id")
+    serializer_class = FoodProductSubtypeSerializer
+    permission_classes = [IsSuperUser]
+    pagination_class = None
+
+
+class AdminCatalogProductViewSet(viewsets.ModelViewSet):
+    queryset = FoodProducts.objects.select_related(
+        "subtype",
+        "subtype__product_type",
+    ).prefetch_related(
+        "macros",
+        "minerals",
+        "vitamins",
+        "other_nutrients",
+        "fat_acids",
+    ).order_by("id")
+    permission_classes = [IsSuperUser]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = {
+        "subtype": ["exact"],
+        "subtype__product_type": ["exact"],
+        "is_complex": ["exact"],
+    }
+    search_fields = ["name"]
+    ordering_fields = ["id", "name"]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return AdminFoodProductCreateSerializer
+        if self.action in ("update", "partial_update"):
+            return AdminFoodProductUpdateSerializer
+        return AdminFoodProductSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save()
+        return Response(AdminFoodProductSerializer(product).data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        product = self.get_object()
+        serializer = self.get_serializer(product, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save()
+        return Response(AdminFoodProductSerializer(product).data)
+
+    def destroy(self, request, *args, **kwargs):
+        product = self.get_object()
+        blockers = get_product_delete_blockers(product)
+        if blockers:
+            return Response(
+                {
+                    "detail": "Продукт нельзя удалить, потому что он связан с магазинными продуктами.",
+                    "blockers": blockers,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        product.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class MacronutrientsViewSet(viewsets.ModelViewSet):
     queryset = Macronutrients.objects.select_related("food_product").all()
