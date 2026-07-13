@@ -41,7 +41,7 @@ const HIDDEN_NUTRIENT_CODES = new Set(["starch_g", "ash_g", "alcohol_pct"]);
 const TARGET_SECTIONS = [
   {
     key: "macronutrients",
-    title: "Макропищевые вещества",
+    title: "Макронутриенты",
     description: "Значения этой группы используются как ориентиры по основным компонентам питания.",
     codes: ["protein_g", "fats_g", "carbs_g", "dietary_fiber_g", "mds_g", "water_g"],
   },

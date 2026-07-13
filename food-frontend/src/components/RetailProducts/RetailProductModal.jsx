@@ -49,7 +49,7 @@ const btn = {
 
 const nutrientSections = [
   {
-    title: "Макропищевые вещества",
+    title: "Макронутриенты",
     fields: [
       ["energy_kcal", "Энергетическая ценность", "ккал"],
       ["protein_g", "Белки", "г"],
@@ -322,6 +322,14 @@ export default function RetailProductModal({
     (catalogProducts || []).find((item) => String(item.id) === String(draft.related_food_product)) || null
   ), [catalogProducts, draft.related_food_product]);
 
+  const selectedProductGroup = useMemo(() => (
+    groups.find((item) => String(item.id) === String(draft.related_food_group)) || null
+  ), [draft.related_food_group, groups]);
+
+  const selectedProductSubgroup = useMemo(() => (
+    subgroups.find((item) => String(item.id) === String(draft.related_food_subgroup)) || null
+  ), [draft.related_food_subgroup, subgroups]);
+
   useEffect(() => {
     setFillPreview(null);
     setPreviewPlaceholders({});
@@ -390,6 +398,26 @@ export default function RetailProductModal({
     setDraft((current) => ({ ...current, [fieldName]: value }));
   };
 
+  const applyProductGroupSelection = (value) => {
+    setDraft((current) => ({
+      ...current,
+      related_food_group: value,
+      related_food_subgroup: "",
+      group_match_confidence: null,
+      subgroup_match_confidence: null,
+      match_method: "manual",
+    }));
+  };
+
+  const applyProductSubgroupSelection = (value) => {
+    setDraft((current) => ({
+      ...current,
+      related_food_subgroup: value,
+      subgroup_match_confidence: null,
+      match_method: "manual",
+    }));
+  };
+
   const applyReferenceProductSelection = (product, options = {}) => {
     if (!product) return;
     setDraft((current) => ({
@@ -408,8 +436,6 @@ export default function RetailProductModal({
     setDraft((current) => ({
       ...current,
       related_food_product: "",
-      related_food_group: "",
-      related_food_subgroup: "",
       group_match_confidence: null,
       subgroup_match_confidence: null,
       product_match_confidence: null,
@@ -672,21 +698,20 @@ export default function RetailProductModal({
 
             <div style={{ display: "grid", gap: 12 }}>
                 <div style={{ color: "#555", fontSize: 13, lineHeight: 1.5 }}>
-                  Эталонный продукт выбирается вручную. Группа и подгруппа работают как фильтры, сам магазинный продукт будет связан только с выбранным эталонным продуктом.
+                  Укажите группу и подгруппу магазинного продукта. Эталонный продукт можно выбрать дополнительно, если понятно, какой продукт из справочника лучше всего подходит для заполнения недостающей пищевой ценности.
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
                   <div style={{ display: "grid", gap: 6 }}>
-                    <label>Фильтр по группе</label>
+                    <label>Группа продукта</label>
                     <select
                       style={input}
                       value={draft.related_food_group}
                       onChange={(event) => {
-                        applyField("related_food_group", event.target.value);
-                        applyField("related_food_subgroup", "");
+                        applyProductGroupSelection(event.target.value);
                       }}
                     >
-                      <option value="">Все группы</option>
+                      <option value="">Группа не выбрана</option>
                       {groups.map((item) => (
                         <option key={item.id} value={item.id}>{item.name}</option>
                       ))}
@@ -694,15 +719,15 @@ export default function RetailProductModal({
                   </div>
 
                   <div style={{ display: "grid", gap: 6 }}>
-                    <label>Фильтр по подгруппе</label>
+                    <label>Подгруппа продукта</label>
                     <select
                       style={input}
                       value={draft.related_food_subgroup}
                       onChange={(event) => {
-                        applyField("related_food_subgroup", event.target.value);
+                        applyProductSubgroupSelection(event.target.value);
                       }}
                     >
-                      <option value="">Все подгруппы</option>
+                      <option value="">Подгруппа не выбрана</option>
                       {subgroups.map((item) => (
                         <option key={item.id} value={item.id}>{item.name}</option>
                       ))}
@@ -710,14 +735,27 @@ export default function RetailProductModal({
                   </div>
                 </div>
 
+                <div style={{ border: "1px solid #edf0f2", borderRadius: 12, padding: 12, background: "#fff", display: "grid", gap: 4 }}>
+                  <div style={{ fontWeight: 700 }}>Классификация магазинного продукта</div>
+                  <div style={{ color: "#555", fontSize: 13 }}>
+                    Группа: <strong>{selectedProductGroup?.name || "не выбрана"}</strong>
+                  </div>
+                  <div style={{ color: "#555", fontSize: 13 }}>
+                    Подгруппа: <strong>{selectedProductSubgroup?.name || "не выбрана"}</strong>
+                  </div>
+                </div>
+
                 <div style={{ display: "grid", gap: 6 }}>
-                  <label>Поиск эталонного продукта</label>
+                  <label>Эталонный продукт, если известен</label>
                   <input
                     style={input}
                     value={referenceSearch}
                     onChange={(event) => setReferenceSearch(event.target.value)}
                     placeholder="Начните вводить название"
                   />
+                  <div style={{ color: "#666", fontSize: 12 }}>
+                    Список ниже учитывает выбранную группу и подгруппу. Если эталон не нужен, оставьте поле пустым.
+                  </div>
                   <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid #edf0f2", borderRadius: 12, padding: 8, display: "grid", gap: 6 }}>
                     {referenceOptions.length === 0 ? (
                       <div style={{ color: "#666", fontSize: 13 }}>Ничего не найдено.</div>

@@ -688,7 +688,7 @@ class NutrientDictionary(models.Model):
     GROUP_FAT_ACIDS = "fat_acids"
 
     GROUP_CHOICES = (
-        (GROUP_MACROS, "Макропищевые вещества"),
+        (GROUP_MACROS, "Макронутриенты"),
         (GROUP_MINERALS, "Минералы"),
         (GROUP_VITAMINS, "Витамины"),
         (GROUP_OTHER, "Прочее"),
