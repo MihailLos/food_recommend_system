@@ -174,7 +174,7 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
 
         <hr style={{ margin: "12px 0", border: 0, borderTop: "1px solid #eee" }} />
 
-        {/* Базовые нутриенты */}
+        {/* Базовые пищевые вещества */}
         {[
           ["protein_g",   "Белки, г"],
           ["fats_g",      "Жиры, г"],

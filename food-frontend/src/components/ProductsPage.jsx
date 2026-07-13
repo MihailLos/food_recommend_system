@@ -120,7 +120,7 @@ export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // видимые столбцы: по умолчанию — продукт + ключевые нутриенты
+  // видимые столбцы: по умолчанию — продукт + ключевые пищевые вещества
   const [visibleKeys, setVisibleKeys] = useState(new Set([
     "name","protein_g","fats_g","carbs_g","energy_kcal","fiber_g","alcohol_pct"
   ]));
@@ -230,7 +230,7 @@ export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
         "Продукт общепита": item.isComplex ? "Да" : "Нет",
       };
 
-      // добавляем нутриенты по видимым столбцам
+      // добавляем пищевые вещества по видимым столбцам
       ALL_COLUMNS.forEach(col => {
         if (!visibleKeys.has(col.key)) return;
         if (col.key === "name") return; // уже добавили как "Продукт"

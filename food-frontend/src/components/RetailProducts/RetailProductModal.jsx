@@ -3,7 +3,6 @@ import {
   fetchFoodAdditiveGroups,
   fetchFoodAdditives,
   matchRetailComposition,
-  matchRetailName,
   previewRetailNutritionFill,
 } from "../../api/retailProducts";
 
@@ -50,7 +49,7 @@ const btn = {
 
 const nutrientSections = [
   {
-    title: "Макронутриенты",
+    title: "Макропищевые вещества",
     fields: [
       ["energy_kcal", "Энергетическая ценность", "ккал"],
       ["protein_g", "Белки", "г"],
@@ -106,11 +105,6 @@ const steps = [
   "Пищевая ценность",
   "Проверка и сохранение",
 ];
-
-const referenceModes = {
-  AUTO: "auto",
-  MANUAL: "manual",
-};
 
 function makeEmptyDraft() {
   return {
@@ -229,9 +223,6 @@ export default function RetailProductModal({
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [referenceMode, setReferenceMode] = useState(referenceModes.AUTO);
-  const [manualSelectionUnlocked, setManualSelectionUnlocked] = useState(false);
-  const [nameMatch, setNameMatch] = useState(null);
   const [compositionMatch, setCompositionMatch] = useState(null);
   const [fillPreview, setFillPreview] = useState(null);
   const [previewPlaceholders, setPreviewPlaceholders] = useState({});
@@ -251,9 +242,6 @@ export default function RetailProductModal({
     setStep(0);
     setLoading(false);
     setError("");
-    setReferenceMode(initialProduct?.product_match_confidence ? referenceModes.AUTO : referenceModes.MANUAL);
-    setManualSelectionUnlocked(!initialProduct?.product_match_confidence);
-    setNameMatch(null);
     setCompositionMatch(null);
     setFillPreview(null);
     setPreviewPlaceholders({});
@@ -416,50 +404,27 @@ export default function RetailProductModal({
     }));
   };
 
-  const handleMatchName = async () => {
-    if (!String(draft.name || "").trim()) {
-      setError("Сначала введи название продукта.");
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      const result = await matchRetailName(draft.name);
-      setNameMatch(result);
-      setReferenceMode(referenceModes.AUTO);
-      setManualSelectionUnlocked(false);
-      setReferenceSearch(result?.suggested_product?.name || "");
-      if (result?.suggested_product?.id) {
-        const matchedProduct = (catalogProducts || []).find((item) => String(item.id) === String(result.suggested_product.id));
-        if (matchedProduct) {
-          applyReferenceProductSelection(matchedProduct, { matchMethod: "auto_confirmed", keepConfidence: true });
-        } else {
-          setDraft((current) => ({
-            ...current,
-            related_food_product: result.suggested_product.id,
-            group_match_confidence: result?.suggested_group?.confidence ?? current.group_match_confidence,
-            subgroup_match_confidence: result?.suggested_subgroup?.confidence ?? current.subgroup_match_confidence,
-            product_match_confidence: result?.suggested_product?.confidence ?? current.product_match_confidence,
-            match_method: "auto_confirmed",
-          }));
-        }
-      }
-      setDraft((current) => ({
-        ...current,
-        group_match_confidence: result?.suggested_group?.confidence ?? current.group_match_confidence,
-        subgroup_match_confidence: result?.suggested_subgroup?.confidence ?? current.subgroup_match_confidence,
-        product_match_confidence: result?.suggested_product?.confidence ?? current.product_match_confidence,
-      }));
-    } catch (requestError) {
-      setError(requestError?.response?.data?.detail || requestError?.message || "Не удалось подобрать эталон.");
-    } finally {
-      setLoading(false);
-    }
+  const clearReferenceProductSelection = () => {
+    setDraft((current) => ({
+      ...current,
+      related_food_product: "",
+      related_food_group: "",
+      related_food_subgroup: "",
+      group_match_confidence: null,
+      subgroup_match_confidence: null,
+      product_match_confidence: null,
+      match_method: "manual",
+      nutrition_fill_mode: "manual",
+    }));
+    setReferenceSearch("");
+    setFillPreview(null);
+    setPreviewPlaceholders({});
+    setAutoFilledFieldNames([]);
   };
 
   const handleMatchComposition = async () => {
     if (!String(draft.composition_text || "").trim()) {
-      setError("Сначала введи состав продукта.");
+      setError("Сначала введите состав продукта.");
       return;
     }
     setLoading(true);
@@ -482,7 +447,7 @@ export default function RetailProductModal({
 
   const handlePreviewFill = async () => {
     if (!hasReferenceProduct) {
-      setError("Сначала выбери эталонный продукт.");
+      setError("Сначала выберите эталонный продукт.");
       return;
     }
     setLoading(true);
@@ -705,90 +670,9 @@ export default function RetailProductModal({
               />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-              <button
-                type="button"
-                style={{
-                  ...btn,
-                  borderColor: referenceMode === referenceModes.AUTO ? "#2e7d32" : "#d5dbe3",
-                  background: referenceMode === referenceModes.AUTO ? "rgba(46,125,50,0.08)" : "#fff",
-                  color: "#1f5f26",
-                  fontWeight: 700,
-                }}
-                onClick={handleMatchName}
-                disabled={loading}
-              >
-                Подобрать эталон по названию
-              </button>
-              <button
-                type="button"
-                style={{
-                  ...btn,
-                  borderColor: referenceMode === referenceModes.MANUAL ? "#2e7d32" : "#d5dbe3",
-                  background: referenceMode === referenceModes.MANUAL ? "rgba(46,125,50,0.08)" : "#fff",
-                  color: "#1f5f26",
-                  fontWeight: 700,
-                }}
-                onClick={() => {
-                  setReferenceMode(referenceModes.MANUAL);
-                  setManualSelectionUnlocked(true);
-                  setNameMatch(null);
-                }}
-              >
-                Подобрать эталонный продукт вручную
-              </button>
-            </div>
-
-            {referenceMode === referenceModes.AUTO && (
-              <div style={{ border: "1px solid #dfe9df", borderRadius: 14, padding: 16, background: "#f8fcf8", display: "grid", gap: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <div style={{ fontWeight: 700 }}>Автоматически подобранный эталон</div>
-                  <button
-                    type="button"
-                    style={btn}
-                    onClick={() => {
-                      setReferenceMode(referenceModes.MANUAL);
-                      setManualSelectionUnlocked(true);
-                    }}
-                  >
-                    Изменить подбор
-                  </button>
-                </div>
-                {selectedReferenceProduct ? (
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div style={{ fontSize: 22, fontWeight: 700 }}>{selectedReferenceProduct.name}</div>
-                    <div style={{ color: "#555", fontSize: 14 }}>
-                      Группа: <strong>{selectedReferenceProduct.typeName || "—"}</strong>
-                    </div>
-                    <div style={{ color: "#555", fontSize: 14 }}>
-                      Подгруппа: <strong>{selectedReferenceProduct.subtypeName || "—"}</strong>
-                    </div>
-                    <div style={{ color: "#555", fontSize: 13 }}>
-                      {nameMatch?.suggested_product?.confidence != null && (
-                        <>Совпадение по продукту: <strong>{Math.round(nameMatch.suggested_product.confidence * 100)}%</strong></>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 13, color: "#666", lineHeight: 1.5 }}>
-                    {nameMatch?.suggested_product
-                      ? `Автоподбор нашел эталон «${nameMatch.suggested_product.name}», но он не был найден в локальном каталоге.`
-                      : "Автоподбор пока не выбрал эталонный продукт."}
-                  </div>
-                )}
-                {nameMatch && (
-                  <div style={{ fontSize: 13, color: "#666", lineHeight: 1.5 }}>
-                    {nameMatch.suggested_group && <>Группа-кандидат: {nameMatch.suggested_group.name}.</>}
-                    {nameMatch.suggested_subgroup && <> Подгруппа-кандидат: {nameMatch.suggested_subgroup.name}.</>}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {referenceMode === referenceModes.MANUAL && (
-              <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gap: 12 }}>
                 <div style={{ color: "#555", fontSize: 13, lineHeight: 1.5 }}>
-                  В ручном режиме выбирается только эталонный продукт. Группа и подгруппа используются только как фильтры для удобного поиска.
+                  Эталонный продукт выбирается вручную. Группа и подгруппа работают как фильтры, сам магазинный продукт будет связан только с выбранным эталонным продуктом.
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
@@ -797,7 +681,6 @@ export default function RetailProductModal({
                     <select
                       style={input}
                       value={draft.related_food_group}
-                      disabled={!manualSelectionUnlocked}
                       onChange={(event) => {
                         applyField("related_food_group", event.target.value);
                         applyField("related_food_subgroup", "");
@@ -815,7 +698,6 @@ export default function RetailProductModal({
                     <select
                       style={input}
                       value={draft.related_food_subgroup}
-                      disabled={!manualSelectionUnlocked}
                       onChange={(event) => {
                         applyField("related_food_subgroup", event.target.value);
                       }}
@@ -833,9 +715,8 @@ export default function RetailProductModal({
                   <input
                     style={input}
                     value={referenceSearch}
-                    disabled={!manualSelectionUnlocked}
                     onChange={(event) => setReferenceSearch(event.target.value)}
-                    placeholder="Начни вводить название"
+                    placeholder="Начните вводить название"
                   />
                   <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid #edf0f2", borderRadius: 12, padding: 8, display: "grid", gap: 6 }}>
                     {referenceOptions.length === 0 ? (
@@ -845,7 +726,6 @@ export default function RetailProductModal({
                         <button
                           key={item.id}
                           type="button"
-                          disabled={!manualSelectionUnlocked}
                           style={{
                             ...btn,
                             textAlign: "left",
@@ -872,13 +752,17 @@ export default function RetailProductModal({
                       <div style={{ color: "#555", fontSize: 13 }}>
                         {selectedReferenceProduct.typeName || "Без группы"} · {selectedReferenceProduct.subtypeName || "Без подгруппы"}
                       </div>
+                      <div>
+                        <button type="button" style={btn} onClick={clearReferenceProductSelection}>
+                          Убрать эталонный продукт
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <div style={{ fontSize: 13, color: "#666" }}>Эталонный продукт пока не выбран.</div>
                   )}
                 </div>
               </div>
-            )}
           </div>
         )}
 
@@ -890,7 +774,7 @@ export default function RetailProductModal({
                 style={{ ...input, minHeight: 120, resize: "vertical" }}
                 value={draft.composition_text}
                 onChange={(event) => applyField("composition_text", event.target.value)}
-                placeholder="Перенеси состав с упаковки как есть"
+                placeholder="Перенесите состав с упаковки как есть"
               />
             </div>
 
@@ -1137,7 +1021,7 @@ export default function RetailProductModal({
               </div>
               <div style={{ color: requiredReady.hasCoreNutrients ? "#1f5f26" : "#a23442" }}>
                 {requiredReady.hasCoreNutrients
-                  ? "Есть базовые нутриенты для расчета"
+                  ? "Есть базовые пищевые вещества для расчета"
                   : "Нужен хотя бы один показатель из базовой пищевой ценности"}
               </div>
               <div style={{ color: requiredReady.isReady ? "#1f5f26" : "#8a6d1d" }}>

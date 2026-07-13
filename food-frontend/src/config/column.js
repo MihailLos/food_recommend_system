@@ -34,7 +34,7 @@ export const ALL_COLUMNS = [
 export const COLUMN_GROUPS = [
   {
     id: "macros",
-    label: "Макронутриенты",
+    label: "Макропищевые вещества",
     keys: ["protein_g","fats_g","carbs_g","energy_kcal","fiber_g","mds_g","starch_g","water_g"],
   },
   {
@@ -54,7 +54,7 @@ export const COLUMN_GROUPS = [
   },
   {
     id: "other",
-    label: "Другие нутриенты",
+    label: "Другие пищевые вещества",
     keys: ["organic_acids_g","alcohol_pct"],
   },
 ];

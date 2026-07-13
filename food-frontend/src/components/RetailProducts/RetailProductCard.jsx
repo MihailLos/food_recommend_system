@@ -107,7 +107,7 @@ export default function RetailProductCard({ product, onEdit, onDelete }) {
         )}
         {product?.nutrition_fill_mode && product?.nutrition_fill_mode !== "label_only" && (
           <span style={{ padding: "5px 10px", borderRadius: 999, background: "#f5f7fa", color: "#4a5560", fontSize: 12 }}>
-            Часть нутриентов заполнена из эталона
+            Часть пищевых веществ заполнена из эталона
           </span>
         )}
         {product?.is_allergen && (

@@ -41,7 +41,7 @@ const HIDDEN_NUTRIENT_CODES = new Set(["starch_g", "ash_g", "alcohol_pct"]);
 const TARGET_SECTIONS = [
   {
     key: "macronutrients",
-    title: "Макронутриенты",
+    title: "Макропищевые вещества",
     description: "Значения этой группы используются как ориентиры по основным компонентам питания.",
     codes: ["protein_g", "fats_g", "carbs_g", "dietary_fiber_g", "mds_g", "water_g"],
   },
@@ -75,7 +75,7 @@ const TARGET_SECTIONS = [
   },
   {
     key: "other",
-    title: "Другие нутриенты",
+    title: "Другие пищевые вещества",
     description: "Дополнительные ориентиры, которые не входят в основные группы выше.",
     codes: ["organic_acids_g"],
   },
@@ -691,7 +691,7 @@ export default function ConsumerGoalsTab({ profileId }) {
               />
             </div>
             <InfoText>
-              Если специалист рекомендовал дефицит или профицит энергии, задай величину здесь, а направление выбери кнопками «−» или «+».
+              Если специалист рекомендовал дефицит или профицит энергии, задайте величину здесь, а направление выберите кнопками «−» или «+».
             </InfoText>
             {bmiGuidance?.energyHint && (
               <div

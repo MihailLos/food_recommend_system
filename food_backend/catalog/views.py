@@ -68,7 +68,7 @@ def _compute_catalog_export_meta():
     """
     Сигнатура серверного каталога для фоновой проверки на фронте.
     Должна меняться не только при добавлении строк, но и при правке названий,
-    нутриентов, аллергенов и правил детского питания.
+    пищевых веществ, аллергенов и правил детского питания.
     """
     snapshot = {
         "products": list(FoodProducts.objects.order_by("id").values_list("id", "name", "subtype_id", "is_complex")),
@@ -151,7 +151,7 @@ class FoodProductViewSet(viewsets.ModelViewSet):
         product = self.get_object()
 
         options = []
-        # В справочнике типов обработки у тебя ~180 записей — можно спокойно перебрать.
+        # В справочнике типов обработки около 180 записей, их можно спокойно перебрать.
         for pt in CulinaryProcessingType.objects.all().order_by("id"):
             rule, scope = pick_processing_rule(product, pt.id)
             if rule is None:
@@ -200,7 +200,7 @@ class FoodProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="export", pagination_class=None)
     def export(self, request):
         """
-        Полный экспорт каталога: продукт + нутриенты одним JSON массивом.
+        Полный экспорт каталога: продукт + пищевые вещества одним JSON массивом.
         Без пагинации, чтобы сохранить локальную копию на фронте.
         """
         qs = self.filter_queryset(

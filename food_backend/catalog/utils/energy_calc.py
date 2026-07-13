@@ -182,7 +182,7 @@ def calculate_tdee_for_profile(profile: ConsumerProfile) -> EnergyCalcResult:
     # BMR
     bmr, dbg = calculate_bmr(sex=sex, age_years=age_years, weight_kg=weight_kg)
 
-    # KFA из группы труда (у тебя FK на WorkActivityGroup)
+    # KFA из группы труда: FK на WorkActivityGroup.
     wg = profile.work_group
     # Важно: KFA в таблице может быть Decimal. Приводим к float.
     if sex == "male":

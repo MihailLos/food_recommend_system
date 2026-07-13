@@ -3,6 +3,8 @@ import {
   fetchAvailableRecommendationNutrients,
   fetchFoodProductSubtypes,
   fetchFoodProductTypes,
+  fetchNutrientsDictionary,
+  fetchProfileTargets,
   fetchRecommendations,
 } from "../../api/consumer";
 import { fetchCatalogExport } from "../../api/products";
@@ -279,7 +281,7 @@ const recommendationPayloadFields = [
 
 function normalizeRetailSelectionProduct(item, sourceMode = "retail_only") {
   const recommendationId = sourceMode === "retail_only" ? -Math.abs(Number(item.id)) : -Math.abs(Number(item.id));
-  return {
+  const projected = {
     id: item.id,
     recommendationId,
     sourceKind: "retail",
@@ -291,6 +293,12 @@ function normalizeRetailSelectionProduct(item, sourceMode = "retail_only") {
     status: item.status,
     ready: Boolean(item.is_ready_for_recommendation),
   };
+  for (const field of recommendationPayloadFields) {
+    if (item?.[field] !== undefined) {
+      projected[field] = item[field];
+    }
+  }
+  return projected;
 }
 
 function toRecommendationPayload(products) {
@@ -306,9 +314,47 @@ function toRecommendationPayload(products) {
   });
 }
 
+function isKnownNutrientValue(value) {
+  if (value === null || value === undefined || value === "") return false;
+  const number = Number(String(value).replace(",", "."));
+  return Number.isFinite(number);
+}
+
+function NutrientPillList({ items, emptyText, tone = "neutral" }) {
+  const color = tone === "warning" ? "#9a5b00" : tone === "good" ? "#1f5f26" : "#44515d";
+  const bg = tone === "warning" ? "#fff7e8" : tone === "good" ? "#f0f8f0" : "#f7f9fc";
+  const border = tone === "warning" ? "#f2d39b" : tone === "good" ? "#cfe6cf" : "#e3e8ef";
+  if (!items.length) {
+    return <div style={{ color: "#666", fontSize: 13 }}>{emptyText}</div>;
+  }
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {items.map((item) => (
+        <span
+          key={item.code || item}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "5px 8px",
+            borderRadius: 999,
+            border: `1px solid ${border}`,
+            background: bg,
+            color,
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          {item.label || item.ru_name || item.code || item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function SignalTable({ signals }) {
   if (!Array.isArray(signals) || signals.length === 0) {
-    return <div style={{ color: "#666", fontSize: 13 }}>Нет детализированных данных по нутриентам.</div>;
+    return <div style={{ color: "#666", fontSize: 13 }}>Нет детализированных данных по пищевым веществам.</div>;
   }
 
   return (
@@ -498,6 +544,8 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const [retailProducts, setRetailProducts] = useState([]);
   const [availableNutrients, setAvailableNutrients] = useState([]);
   const [availableNutrientsLoading, setAvailableNutrientsLoading] = useState(false);
+  const [nutrientsDictionary, setNutrientsDictionary] = useState([]);
+  const [guidanceLists, setGuidanceLists] = useState({ coverageCodes: [], limitCodes: [] });
   const [sortBy, setSortBy] = useState("score_percent_100");
   const [sortDirection, setSortDirection] = useState("desc");
   const [types, setTypes] = useState([]);
@@ -527,6 +575,19 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     if (!selectionTypeId) return subtypes;
     return subtypes.filter((item) => Number(item?.product_type || item?.product_type_id || item?.type_id || item?.product_type?.id) === Number(selectionTypeId));
   }, [selectionTypeId, subtypes]);
+
+  const nutrientMetaMap = useMemo(() => {
+    const map = new Map();
+    [...nutrientsDictionary, ...availableNutrients].forEach((item) => {
+      if (item?.code) map.set(item.code, item);
+    });
+    return map;
+  }, [availableNutrients, nutrientsDictionary]);
+
+  const nutrientLabel = useCallback((code) => {
+    const meta = nutrientMetaMap.get(code);
+    return meta?.ru_name || meta?.name || code;
+  }, [nutrientMetaMap]);
 
   const ensureLocalCatalog = useCallback(async () => {
     const localItems = await getAllProducts(catalogScope);
@@ -599,6 +660,29 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   useEffect(() => {
     if (!profileIdNum) return;
     let cancelled = false;
+    Promise.all([fetchProfileTargets(profileIdNum), fetchNutrientsDictionary()])
+      .then(([targetsData, nutrientsData]) => {
+        if (cancelled) return;
+        setGuidanceLists({
+          coverageCodes: normalizeList(targetsData?.guidance_lists?.coverage_codes || []),
+          limitCodes: normalizeList(targetsData?.guidance_lists?.limit_codes || []),
+        });
+        setNutrientsDictionary(normalizeList(nutrientsData));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGuidanceLists({ coverageCodes: [], limitCodes: [] });
+          setNutrientsDictionary([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileIdNum]);
+
+  useEffect(() => {
+    if (!profileIdNum) return;
+    let cancelled = false;
     setAvailableNutrientsLoading(true);
     fetchAvailableRecommendationNutrients(profileIdNum, sourceMode)
       .then((data) => {
@@ -637,31 +721,6 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
 
   useEffect(() => () => stopProgress(), [stopProgress]);
 
-  const validateFilters = useCallback(() => {
-    if (sourceMode === "retail_only" && retailProducts.length === 0) {
-      return "Нет готовых магазинных продуктов. Сначала добавьте их во вкладке магазинных продуктов.";
-    }
-    if (sourceMode === "reference_plus_retail" && retailProducts.length === 0) {
-      return "Для смешанного режима нужен хотя бы один готовый магазинный продукт.";
-    }
-    if (!availableNutrientsLoading && availableNutrients.length === 0) {
-      return "Для выбранного источника пока нет доступных пищевых веществ для расчета.";
-    }
-    if (!comparisonMode) {
-      return "Сначала выберите множество сравнения.";
-    }
-    if (comparisonMode === "type" && !typeId) {
-      return "Для сравнения по группе сначала выберите группу продуктов.";
-    }
-    if (comparisonMode === "subgroup" && !subtypeId) {
-      return "Для сравнения по подгруппе сначала выберите подгруппу продуктов.";
-    }
-    if (comparisonMode === "selected" && selectedProducts.length === 0) {
-      return "Для свободного выбора сначала добавьте продукты в множество сравнения.";
-    }
-    return "";
-  }, [availableNutrients.length, availableNutrientsLoading, comparisonMode, retailProducts.length, selectedProducts.length, sourceMode, subtypeId, typeId]);
-
   const searchSuggestions = useMemo(() => {
     const search = String(selectionSearch || "").trim().toLowerCase();
     let pool = [];
@@ -697,6 +756,83 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       .filter((item) => !selectedIds.has(String(item.recommendationId ?? item.id)))
       .slice(0, 20);
   }, [catalogProducts, retailProducts, selectedProducts, selectionSearch, selectionSubtypeId, selectionTypeId, sourceMode]);
+
+  const nutrientAvailability = useMemo(() => {
+    const selectedCoverage = (guidanceLists.coverageCodes || []).map((code) => ({
+      code,
+      label: nutrientLabel(code),
+    }));
+    const selectedLimit = (guidanceLists.limitCodes || []).map((code) => ({
+      code,
+      label: nutrientLabel(code),
+    }));
+
+    let availableCodes = new Set((availableNutrients || []).map((item) => item.code).filter(Boolean));
+    let limitingProductName = "";
+
+    if (comparisonMode === "selected" && selectedProducts.length > 0 && nutrientsDictionary.length > 0) {
+      const productCodeSets = selectedProducts.map((product) => {
+        const codes = new Set(
+          nutrientsDictionary
+            .map((item) => item.code)
+            .filter((code) => isKnownNutrientValue(product?.[code]))
+        );
+        return { product, codes };
+      });
+      const limiting = [...productCodeSets].sort((left, right) => left.codes.size - right.codes.size)[0];
+      limitingProductName = limiting?.product?.name || "";
+      availableCodes = new Set(limiting?.codes || []);
+      for (const item of productCodeSets) {
+        availableCodes = new Set([...availableCodes].filter((code) => item.codes.has(code)));
+      }
+    }
+
+    const availableItems = (nutrientsDictionary.length ? nutrientsDictionary : availableNutrients)
+      .filter((item) => availableCodes.has(item.code))
+      .map((item) => ({ code: item.code, label: item.ru_name || item.name || item.code }));
+
+    const unavailableCoverage = selectedCoverage.filter((item) => !availableCodes.has(item.code));
+    const unavailableLimit = selectedLimit.filter((item) => !availableCodes.has(item.code));
+    const selectedTotal = selectedCoverage.length + selectedLimit.length;
+    const unavailableTotal = unavailableCoverage.length + unavailableLimit.length;
+
+    return {
+      selectedCoverage,
+      selectedLimit,
+      unavailableCoverage,
+      unavailableLimit,
+      availableItems,
+      limitingProductName,
+      selectedTotal,
+      unavailableTotal,
+      isComplete: selectedTotal > 0 && unavailableTotal === 0,
+    };
+  }, [availableNutrients, comparisonMode, guidanceLists.coverageCodes, guidanceLists.limitCodes, nutrientLabel, nutrientsDictionary, selectedProducts]);
+
+  const validateFilters = useCallback(() => {
+    if (sourceMode === "retail_only" && retailProducts.length === 0) {
+      return "Нет готовых магазинных продуктов. Сначала добавьте их во вкладке магазинных продуктов.";
+    }
+    if (sourceMode === "reference_plus_retail" && retailProducts.length === 0) {
+      return "Для смешанного режима нужен хотя бы один готовый магазинный продукт.";
+    }
+    if (!availableNutrientsLoading && nutrientAvailability.availableItems.length === 0) {
+      return "Для выбранного источника пока нет доступных пищевых веществ для расчета.";
+    }
+    if (!comparisonMode) {
+      return "Сначала выберите множество сравнения.";
+    }
+    if (comparisonMode === "type" && !typeId) {
+      return "Для сравнения по группе сначала выберите группу продуктов.";
+    }
+    if (comparisonMode === "subgroup" && !subtypeId) {
+      return "Для сравнения по подгруппе сначала выберите подгруппу продуктов.";
+    }
+    if (comparisonMode === "selected" && selectedProducts.length === 0) {
+      return "Для свободного выбора сначала добавьте продукты в множество сравнения.";
+    }
+    return "";
+  }, [availableNutrientsLoading, comparisonMode, nutrientAvailability.availableItems.length, retailProducts.length, selectedProducts.length, sourceMode, subtypeId, typeId]);
 
   const items = useMemo(() => {
     const data = [...rawItems];
@@ -776,8 +912,11 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const stats = useMemo(() => {
     const total = items.length;
     const excluded = items.filter((item) => item.class_code === "excluded").length;
-    const avgPriority = items.length
-      ? roundValue(items.reduce((acc, item) => acc + Number(item?.score_components?.score_percent_100 || 0), 0) / items.length)
+    const scoredItems = items
+      .map((item) => Number(item?.score_components?.score_percent_100))
+      .filter((value) => Number.isFinite(value));
+    const avgPriority = scoredItems.length
+      ? roundValue(scoredItems.reduce((acc, value) => acc + value, 0) / scoredItems.length)
       : null;
     return { total, excluded, avgPriority };
   }, [items]);
@@ -865,7 +1004,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       <div style={{ ...box, padding: 16, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 700, fontSize: 18 }}>Рекомендации</div>
         <div style={{ color: "#555", lineHeight: 1.55 }}>
-          Сначала выбери источник продуктов и множество сравнения. Алгоритм сравнивает продукты только внутри выбранной базы,
+          Сначала выберите источник продуктов и множество сравнения. Алгоритм сравнивает продукты только внутри выбранной базы,
           группы, подгруппы или вручную собранного множества. После этого рассчитываются уровень покрытия, уровень лимитной нагрузки
           и итоговая оценка приоритетности продукта.
         </div>
@@ -948,26 +1087,6 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                   Это обязательное поле. Без него алгоритм не знает, с какими продуктами сравнивать результат.
                 </div>
               )}
-            </div>
-
-            <div style={{ display: "grid", gap: 6 }}>
-              <label>Доступные пищевые вещества</label>
-              <div
-                style={{
-                  ...input,
-                  display: "flex",
-                  alignItems: "center",
-                  background: "#fafcfd",
-                  color: "#44515d",
-                }}
-              >
-                {availableNutrientsLoading ? "Загрузка..." : `${availableNutrients.length} шт.`}
-              </div>
-              <div style={{ fontSize: 12, color: availableNutrients.length ? "#666" : "#8a6d1d" }}>
-                {availableNutrients.length
-                  ? "Именно по этим веществам выбранный источник может участвовать в расчете."
-                  : "Для выбранного источника пока нет полного набора данных."}
-              </div>
             </div>
 
             {comparisonMode === "type" && (
@@ -1181,6 +1300,63 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
               </div>
             )}
 
+          </div>
+
+          <div
+            style={{
+              border: `1px solid ${nutrientAvailability.unavailableTotal ? "#f2d39b" : "#cfe6cf"}`,
+              borderRadius: 12,
+              padding: 12,
+              background: nutrientAvailability.unavailableTotal ? "#fffaf0" : "#f8fcf8",
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ fontWeight: 700 }}>Пищевые вещества для анализа</div>
+              <div style={{ fontSize: 12, color: "#666" }}>
+                {availableNutrientsLoading ? "Проверяем доступность..." : `Доступно для анализа: ${nutrientAvailability.availableItems.length}`}
+              </div>
+            </div>
+
+            <div style={{ color: nutrientAvailability.unavailableTotal ? "#8a6d1d" : "#1f5f26", fontSize: 13, lineHeight: 1.5 }}>
+              {nutrientAvailability.selectedTotal === 0 && "В пищевых ориентирах пока не выбраны вещества покрытия или лимитной нагрузки."}
+              {nutrientAvailability.selectedTotal > 0 && nutrientAvailability.isComplete && (
+                "Информация о содержании выбранных пищевых веществ есть во всех анализируемых продуктах. Анализ будет полноценным."
+              )}
+              {nutrientAvailability.selectedTotal > 0 && nutrientAvailability.unavailableTotal > 0 && (
+                "Часть выбранных пищевых веществ отсутствует в анализируемых продуктах. Анализ будет неполноценным, лучше выбрать вещества из доступного списка."
+              )}
+              {nutrientAvailability.limitingProductName && (
+                <> Минимальный набор данных сейчас у продукта «{nutrientAvailability.limitingProductName}».</>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isCompactLayout ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 600 }}>Выбрано для покрытия</div>
+                <NutrientPillList items={nutrientAvailability.selectedCoverage} emptyText="Список покрытия пуст." tone="good" />
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 600 }}>Выбрано для лимитной нагрузки</div>
+                <NutrientPillList items={nutrientAvailability.selectedLimit} emptyText="Список лимитной нагрузки пуст." tone="warning" />
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 600 }}>Недоступно из выбранного</div>
+                <NutrientPillList
+                  items={[...nutrientAvailability.unavailableCoverage, ...nutrientAvailability.unavailableLimit]}
+                  emptyText="Все выбранные вещества доступны."
+                  tone={nutrientAvailability.unavailableTotal ? "warning" : "good"}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontWeight: 600 }}>Доступные пищевые вещества</div>
+              <div style={{ maxHeight: 120, overflow: "auto", border: "1px solid #e3e8ef", borderRadius: 10, padding: 8, background: "#fff" }}>
+                <NutrientPillList items={nutrientAvailability.availableItems} emptyText="Для выбранного источника пока нет полного набора данных." />
+              </div>
+            </div>
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

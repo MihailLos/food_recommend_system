@@ -23,7 +23,7 @@ export async function fetchAllPages(path) {
   return all;
 }
 
-/** Загрузить продукты с нутриентами + опц. поиск */
+/** Загрузить продукты с пищевыми веществами + опц. поиск */
 export async function getProductsWithNutrients(search = "") {
   const q = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : "";
   const path = `/api/products/with_nutrients/?ordering=id${q}`;

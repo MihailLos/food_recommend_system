@@ -73,7 +73,7 @@ def scale_by_weight(value_per_100g, weight_g):
 
 
 def per_100g_from_amount(amount, output_weight_g):
-    """Пересчёт общего количества нутриента -> концентрация на 100 г готового продукта."""
+    """Пересчёт общего количества пищевого вещества -> концентрация на 100 г готового продукта."""
     if amount is None or output_weight_g is None or output_weight_g <= 0:
         return None
     return amount / output_weight_g * 100.0
@@ -82,9 +82,9 @@ def per_100g_from_amount(amount, output_weight_g):
 def calculate_ready_values(base_per_100g, input_weight_g, output_weight_g, loss_pct):
     """
     Методика пересчёта:
-    1. считаем исходное количество нутриента во введённой сырой массе;
-    2. применяем потери нутриента при обработке;
-    3. пересчитываем остаток нутриента на 100 г готового продукта.
+    1. считаем исходное количество пищевого вещества во введённой сырой массе;
+    2. применяем потери пищевого вещества при обработке;
+    3. пересчитываем остаток пищевого вещества на 100 г готового продукта.
     """
     raw_amount = scale_by_weight(base_per_100g, input_weight_g)
     retained_amount = apply_loss(raw_amount, loss_pct)

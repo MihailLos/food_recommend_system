@@ -539,7 +539,7 @@ def _build_reason_factor(signal: dict, goal_type: Optional[str]) -> dict:
             short = f"{nutrient_name} умеренно повысил рекомендацию"
         else:
             short = f"{nutrient_name} слабо повысил рекомендацию"
-        title = f"Для цели {goal_title} нутриент «{nutrient_name}» дал {strength_label} положительное влияние."
+        title = f"Для цели {goal_title} пищевое вещество «{nutrient_name}» дало {strength_label} положительное влияние."
     else:
         if strength_code == "strong":
             short = f"{nutrient_name} заметно ограничил рекомендацию"
@@ -547,7 +547,7 @@ def _build_reason_factor(signal: dict, goal_type: Optional[str]) -> dict:
             short = f"{nutrient_name} умеренно ограничил рекомендацию"
         else:
             short = f"{nutrient_name} слабо ограничил рекомендацию"
-        title = f"Для цели {goal_title} повышенное содержание нутриента «{nutrient_name}» дало {strength_label} ограничивающее влияние."
+        title = f"Для цели {goal_title} повышенное содержание пищевого вещества «{nutrient_name}» дало {strength_label} ограничивающее влияние."
 
     return {
         "code": signal["code"],
@@ -735,6 +735,8 @@ def _build_group_metrics(
         signals: List[dict] = []
         coverage_sum = 0.0
         limit_sum = 0.0
+        coverage_signal_count = 0
+        limit_signal_count = 0
 
         for code, role in active_roles.items():
             nd = nutrient_map.get(code)
@@ -755,8 +757,13 @@ def _build_group_metrics(
             signals.append(signal)
             if role == "preferred":
                 coverage_sum += quartile_score
+                coverage_signal_count += 1
             else:
                 limit_sum += quartile_score
+                limit_signal_count += 1
+
+        if coverage_signal_count == 0 and limit_signal_count == 0:
+            continue
 
         category_rule = _match_goal_category_rule(goal_type, product) if use_category_adjustment else None
         category_adjustment = _category_adjustment_for_rule(category_rule)
@@ -764,8 +771,10 @@ def _build_group_metrics(
         signal_map[product_id] = signals
         category_rule_map[product_id] = category_rule
         category_adjustment_map[product_id] = category_adjustment
-        coverage_sum_map[product_id] = coverage_sum
-        limit_sum_map[product_id] = limit_sum
+        if coverage_signal_count > 0:
+            coverage_sum_map[product_id] = coverage_sum
+        if limit_signal_count > 0:
+            limit_sum_map[product_id] = limit_sum
         if has_coverage_dimension and has_limit_dimension:
             priority_raw = coverage_sum - limit_sum + category_adjustment
         elif has_coverage_dimension:
@@ -842,7 +851,7 @@ def _summary_from_signals(
 
     parts = [f"Класс рекомендации: «{class_label}»."]
     if positive_factors:
-        parts.append("На решение сильнее всего повлияли полезные нутриенты: " + "; ".join(f["short_text"] for f in positive_factors) + ".")
+        parts.append("На решение сильнее всего повлияли полезные пищевые вещества: " + "; ".join(f["short_text"] for f in positive_factors) + ".")
     if limiting_factors:
         parts.append("Ограничили рекомендацию прежде всего: " + "; ".join(f["short_text"] for f in limiting_factors) + ".")
     if category_rule:
@@ -1034,7 +1043,7 @@ def recommend(
         if summary["limiting_reasons"]:
             reasons.append("Ограничивающие факторы: " + "; ".join(summary["limiting_reasons"]))
         if not reasons:
-            reasons.append("По выбранному профилю активные нутриенты для расчёта не определены.")
+            reasons.append("По выбранным пищевым веществам для этого продукта нет данных для расчёта.")
 
         comparison_scope, comparison_id = group_key
         if comparison_scope == "global":

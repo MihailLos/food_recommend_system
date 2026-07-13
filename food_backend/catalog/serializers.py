@@ -28,7 +28,7 @@ class FoodProductSubtypeSerializer(serializers.ModelSerializer):
         model = FoodProductSubtypes
         fields = ["id", "name", "product_type"]
 
-# --- нутриенты с нормализованными именами полей ---
+# --- пищевые вещества с нормализованными именами полей ---
 
 class MacronutrientsSerializer(serializers.ModelSerializer):
     protein_g     = serializers.FloatField(source="protein_g_field", required=False, allow_null=True)
@@ -96,7 +96,7 @@ class FatAcidsSerializer(serializers.ModelSerializer):
         fields = ["nlc_g","pufa_g","cholesterol_g"]
 
 
-# --- продукт со вложенными нутриентами ---
+# --- продукт со вложенными пищевыми веществами ---
 class FoodProductSerializer(serializers.ModelSerializer):
     allergens = serializers.SerializerMethodField()
     is_allergen = serializers.SerializerMethodField()
