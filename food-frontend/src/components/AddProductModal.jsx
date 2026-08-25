@@ -42,12 +42,15 @@ function dotToComma(e, setValue) {
   setValue(norm);
 }
 
-export default function AddProductModal({ open, onClose, onSubmit, types, subtypes = [] }) {
+export default function AddProductModal({ open, onClose, onSubmit, types, subtypes = [], allergens = [] }) {
   const [name, setName] = useState("");
   const [typeId, setTypeId] = useState("");
   const [subtypeId, setSubtypeId] = useState("");
   const [newType, setNewType] = useState("");
   const [newSubtype, setNewSubtype] = useState("");
+  const [isChildAllowed, setIsChildAllowed] = useState(false);
+  const [containsAllergens, setContainsAllergens] = useState(false);
+  const [selectedAllergenIds, setSelectedAllergenIds] = useState([]);
   const [form, setForm] = useState({
     protein_g: "",
     fats_g: "",
@@ -82,8 +85,9 @@ export default function AddProductModal({ open, onClose, onSubmit, types, subtyp
 
   const canSubmit = useMemo(() => {
     const hasType = (typeId && typeId !== "__new__") || (newType.trim().length > 0);
-    return name.trim().length > 0 && hasType;
-  }, [name, typeId, newType]);
+    const allergensSelected = !containsAllergens || selectedAllergenIds.length > 0;
+    return name.trim().length > 0 && hasType && allergensSelected;
+  }, [containsAllergens, name, newType, selectedAllergenIds.length, typeId]);
 
   const availableSubtypes = useMemo(() => (
     subtypes.filter((subtype) => String(subtype.typeId) === String(typeId))
@@ -111,9 +115,13 @@ export default function AddProductModal({ open, onClose, onSubmit, types, subtyp
       subtypeId: finalSubtypeId,
       subtypeName: finalSubtypeName,
       isComplex: false,
-      isAllergen: false,
-      isChildAllowed: true,
-      allergens: [],
+      isAllergen: containsAllergens,
+      isChildAllowed,
+      allergens: containsAllergens
+        ? allergens
+          .filter((allergen) => selectedAllergenIds.includes(allergen.id))
+          .map((allergen) => ({ ...allergen, scope: "product" }))
+        : [],
       protein_g:    parseRuNumber(form.protein_g),
       fats_g:       parseRuNumber(form.fats_g),
       carbs_g:      parseRuNumber(form.carbs_g),
@@ -220,6 +228,52 @@ export default function AddProductModal({ open, onClose, onSubmit, types, subtyp
           </div>
         )}
 
+        <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={isChildAllowed}
+              onChange={(e) => setIsChildAllowed(e.target.checked)}
+            />
+            Для детского питания
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={containsAllergens}
+              onChange={(e) => {
+                setContainsAllergens(e.target.checked);
+                if (!e.target.checked) setSelectedAllergenIds([]);
+              }}
+            />
+            Содержит аллергены
+          </label>
+          {containsAllergens && (
+            <section style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #e2e7df", borderRadius: 8 }}>
+              <div style={{ fontWeight: 600 }}>Укажите аллергены продукта</div>
+              {allergens.length === 0 ? (
+                <div style={{ color: "#666", fontSize: 13 }}>Список аллергенов загружается…</div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {allergens.map((allergen) => (
+                    <label key={allergen.id} style={{ border: "1px solid #dfe5dc", borderRadius: 999, padding: "6px 10px", background: "#fff" }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedAllergenIds.includes(allergen.id)}
+                        onChange={(e) => setSelectedAllergenIds((current) => (
+                          e.target.checked
+                            ? [...current, allergen.id]
+                            : current.filter((id) => id !== allergen.id)
+                        ))}
+                      /> {allergen.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+
         <hr style={{ margin: "12px 0", border: 0, borderTop: "1px solid #eee" }} />
 
         {/* Базовые пищевые вещества */}
@@ -277,7 +331,7 @@ export default function AddProductModal({ open, onClose, onSubmit, types, subtyp
             style={{ ...btn, borderColor: "#2e7d32" }}
             onClick={submit}
             disabled={!canSubmit}
-            title={!canSubmit ? "Заполните название и группу" : "Добавить"}
+            title={!canSubmit ? "Заполните название, группу и при необходимости укажите аллергены" : "Добавить"}
           >
             Добавить
           </button>

@@ -12,6 +12,7 @@ import NutritionCalculatorModal from "../components/NutritionCalculatorModal";
 import RetailProductsPage from "./RetailProducts/RetailProductsPage";
 import { ALL_COLUMNS } from "../config/column";
 import { exportJsonToExcel } from "../utils/exportExcel";
+import { fetchAllergens } from "../api/adminCatalog";
 
 /** утилиты */
 function applyFilters(items, filters) {
@@ -88,8 +89,24 @@ export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
 
   // для модалки
   const [addOpen, setAddOpen] = useState(false);
+  const [allergens, setAllergens] = useState([]);
   const [adminModalMode, setAdminModalMode] = useState(null);
   const [adminStatusMessage, setAdminStatusMessage] = useState("");
+
+  useEffect(() => {
+    if (!addOpen) return undefined;
+    let cancelled = false;
+    fetchAllergens()
+      .then((items) => {
+        if (!cancelled) setAllergens(items);
+      })
+      .catch(() => {
+        if (!cancelled) setAllergens([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen]);
 
   // уникальные группы для селекта
   const types = useMemo(() => {
@@ -602,6 +619,7 @@ export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
               onSubmit={addProductLocally}
               types={allTypes}
               subtypes={allSubtypes}
+              allergens={allergens}
       />
       {adminModalMode && (
         <AdminCatalogModal
