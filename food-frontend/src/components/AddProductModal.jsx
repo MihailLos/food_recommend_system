@@ -42,10 +42,12 @@ function dotToComma(e, setValue) {
   setValue(norm);
 }
 
-export default function AddProductModal({ open, onClose, onSubmit, types }) {
+export default function AddProductModal({ open, onClose, onSubmit, types, subtypes = [] }) {
   const [name, setName] = useState("");
   const [typeId, setTypeId] = useState("");
+  const [subtypeId, setSubtypeId] = useState("");
   const [newType, setNewType] = useState("");
+  const [newSubtype, setNewSubtype] = useState("");
   const [form, setForm] = useState({
     protein_g: "",
     fats_g: "",
@@ -83,6 +85,10 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
     return name.trim().length > 0 && hasType;
   }, [name, typeId, newType]);
 
+  const availableSubtypes = useMemo(() => (
+    subtypes.filter((subtype) => String(subtype.typeId) === String(typeId))
+  ), [subtypes, typeId]);
+
   if (!open) return null;
 
   const submit = () => {
@@ -91,14 +97,19 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
 
     const finalTypeName = typeId === "__new__" ? newType.trim() : (types.find(t => String(t.id) === String(typeId))?.name || "");
     const finalTypeId   = typeId === "__new__" ? -Math.floor(Math.random() * 1e9) : (typeId ? Number(typeId) : null);
+    const selectedSubtype = subtypes.find((subtype) => String(subtype.id) === String(subtypeId));
+    const finalSubtypeName = typeId === "__new__" ? newSubtype.trim() : selectedSubtype?.name || null;
+    const finalSubtypeId = typeId === "__new__"
+      ? (finalSubtypeName ? -Math.floor(Math.random() * 1e9) : null)
+      : (selectedSubtype ? Number(selectedSubtype.id) : null);
 
     const payload = {
       id,
       name: name.trim(),
       typeId: finalTypeId,
       typeName: finalTypeName || `Группа #${finalTypeId ?? "?"}`,
-      subtypeId: null,
-      subtypeName: null,
+      subtypeId: finalSubtypeId,
+      subtypeName: finalSubtypeName,
       isComplex: false,
       isAllergen: false,
       isChildAllowed: true,
@@ -153,28 +164,68 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
         </div>
 
         <div style={row} className="app-form-row">
-          <label>Тип продукции</label>
+          <label>Группа продукта</label>
           <div style={{ display: "flex", gap: 8 }}>
             <select
               style={{ ...input, width: "60%" }}
               value={typeId}
-              onChange={(e) => setTypeId(e.target.value)}
+              onChange={(e) => {
+                setTypeId(e.target.value);
+                setSubtypeId("");
+                setNewSubtype("");
+              }}
             >
               <option value="">— выбрать —</option>
               {types.map(t => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
-              <option value="__new__">+ Новый тип…</option>
+              <option value="__new__">+ Новая группа…</option>
             </select>
             {typeId === "__new__" && (
-              <input style={{ ...input, width: "40%" }} value={newType} onChange={(e) => setNewType(e.target.value)} placeholder="Введите новый тип" />
+              <input style={{ ...input, width: "40%" }} value={newType} onChange={(e) => setNewType(e.target.value)} placeholder="Введите новую группу" />
             )}
           </div>
         </div>
 
+        <div style={row} className="app-form-row">
+          <label>Подгруппа продукта</label>
+          <select
+            style={input}
+            value={subtypeId}
+            onChange={(e) => setSubtypeId(e.target.value)}
+            disabled={!typeId || typeId === "__new__" || availableSubtypes.length === 0}
+          >
+            <option value="">
+              {!typeId || typeId === "__new__"
+                ? "— сначала выберите группу —"
+                : availableSubtypes.length === 0
+                  ? "— в этой группе нет подгрупп —"
+                  : "— выбрать —"}
+            </option>
+            {availableSubtypes.map((subtype) => (
+              <option key={subtype.id} value={subtype.id}>{subtype.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {typeId === "__new__" && (
+          <div style={row} className="app-form-row">
+            <label>Новая подгруппа <span style={{ color: "#666", fontWeight: 400 }}>(необязательно)</span></label>
+            <input
+              style={input}
+              value={newSubtype}
+              onChange={(e) => setNewSubtype(e.target.value)}
+              placeholder="Например: Кисломолочные продукты"
+            />
+          </div>
+        )}
+
         <hr style={{ margin: "12px 0", border: 0, borderTop: "1px solid #eee" }} />
 
         {/* Базовые пищевые вещества */}
+        <div style={{ fontWeight: 600, lineHeight: 1.4 }}>
+          Содержание пищевых веществ указывается на 100 г продукта.
+        </div>
         {[
           ["protein_g",   "Белки, г"],
           ["fats_g",      "Жиры, г"],
@@ -226,7 +277,7 @@ export default function AddProductModal({ open, onClose, onSubmit, types }) {
             style={{ ...btn, borderColor: "#2e7d32" }}
             onClick={submit}
             disabled={!canSubmit}
-            title={!canSubmit ? "Заполните название и тип" : "Добавить"}
+            title={!canSubmit ? "Заполните название и группу" : "Добавить"}
           >
             Добавить
           </button>

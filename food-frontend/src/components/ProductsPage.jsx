@@ -104,6 +104,21 @@ export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a,b)=>String(a.name).localeCompare(String(b.name), "ru"));
   }, [allItems]);
 
+  const allSubtypes = useMemo(() => {
+    const map = new Map();
+    for (const item of allItems) {
+      if (!item.typeId || !item.subtypeId) continue;
+      map.set(`${item.typeId}:${item.subtypeId}`, {
+        id: item.subtypeId,
+        name: item.subtypeName || `Подгруппа #${item.subtypeId}`,
+        typeId: item.typeId,
+      });
+    }
+    return Array.from(map.values()).sort((left, right) => (
+      String(left.name).localeCompare(String(right.name), "ru")
+    ));
+  }, [allItems]);
+
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     const saved = localStorage.getItem("sidebarOpen");
     return saved === null ? true : saved === "true";
@@ -586,6 +601,7 @@ export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
               onClose={() => setAddOpen(false)}
               onSubmit={addProductLocally}
               types={allTypes}
+              subtypes={allSubtypes}
       />
       {adminModalMode && (
         <AdminCatalogModal
