@@ -15,20 +15,20 @@ RETAIL_REQUIRED_NUTRIENT_FIELDS = (
 )
 
 
-def get_retail_product_allergens(retail_product: RetailFoodProduct) -> List[dict]:
+def get_retail_product_allergens(retail_product: RetailFoodProduct, allergen_rule_cache=None) -> List[dict]:
     allergens: Dict[int, dict] = {}
 
     reference_product = retail_product.related_food_product
     if reference_product is not None:
-        for allergen in get_allergens_for_product(reference_product):
+        for allergen in get_allergens_for_product(reference_product, rule_cache=allergen_rule_cache):
             allergens[int(allergen["id"])] = allergen
 
-    for component_link in retail_product.retail_components.select_related("food_component"):
+    for component_link in retail_product.retail_components.all():
         component = component_link.food_component
-        for allergen in get_allergens_for_product(component):
+        for allergen in get_allergens_for_product(component, rule_cache=allergen_rule_cache):
             allergens[int(allergen["id"])] = allergen
 
-    for additive_link in retail_product.retail_additives.select_related("food_additive"):
+    for additive_link in retail_product.retail_additives.all():
         additive = additive_link.food_additive
         if additive.provoke_allergy:
             key = -int(additive.id)
@@ -41,19 +41,19 @@ def get_retail_product_allergens(retail_product: RetailFoodProduct) -> List[dict
     return list(allergens.values())
 
 
-def is_retail_product_child_allowed(retail_product: RetailFoodProduct) -> bool:
+def is_retail_product_child_allowed(retail_product: RetailFoodProduct, not_child_rule_cache=None) -> bool:
     reference_product = retail_product.related_food_product
     if reference_product is not None:
-        rule, _level = pick_not_child_rule(reference_product)
+        rule, _level = pick_not_child_rule(reference_product, rule_cache=not_child_rule_cache)
         if rule is not None:
             return False
 
-    for component_link in retail_product.retail_components.select_related("food_component"):
-        rule, _level = pick_not_child_rule(component_link.food_component)
+    for component_link in retail_product.retail_components.all():
+        rule, _level = pick_not_child_rule(component_link.food_component, rule_cache=not_child_rule_cache)
         if rule is not None:
             return False
 
-    for additive_link in retail_product.retail_additives.select_related("food_additive"):
+    for additive_link in retail_product.retail_additives.all():
         additive = additive_link.food_additive
         if additive.for_children is False:
             return False

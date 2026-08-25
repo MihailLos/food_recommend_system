@@ -40,13 +40,20 @@ export default function useRetailProducts() {
   }, [loadProducts]);
 
   const saveProduct = useCallback(async (draft) => {
+    let savedProduct;
     if (draft?.id) {
-      await updateRetailProduct(draft.id, draft);
+      savedProduct = await updateRetailProduct(draft.id, draft);
     } else {
-      await createRetailProduct(draft);
+      savedProduct = await createRetailProduct(draft);
     }
-    await loadProducts();
-  }, [loadProducts]);
+    setProducts((current) => {
+      const exists = current.some((product) => product.id === savedProduct.id);
+      return exists
+        ? current.map((product) => (product.id === savedProduct.id ? savedProduct : product))
+        : [savedProduct, ...current];
+    });
+    return savedProduct;
+  }, []);
 
   const removeProduct = useCallback(async (productId) => {
     await deleteRetailProduct(productId);

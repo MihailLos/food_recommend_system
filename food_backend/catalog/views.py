@@ -42,7 +42,8 @@ from rest_framework.views import APIView
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 
-from catalog.utils.allergens import get_allergens_for_product
+from catalog.utils.allergens import build_allergen_rule_cache, get_allergens_for_product
+from catalog.utils.child_rules import build_not_child_rule_cache
 from catalog.services.recommendations import recommend, get_goal_nutrient_profiles_payload
 from catalog.services.retail_matching import match_retail_name, match_retail_composition
 from catalog.services.retail_nutrition import (
@@ -62,6 +63,14 @@ User = get_user_model()
 class IsSuperUser(BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
+
+
+def _catalog_rule_serializer_context():
+    """Общие правила для пакетной выдачи без запросов на каждую строку."""
+    return {
+        "allergen_rule_cache": build_allergen_rule_cache(),
+        "not_child_rule_cache": build_not_child_rule_cache(),
+    }
 
 
 def _compute_catalog_export_meta():
@@ -136,10 +145,11 @@ class FoodProductViewSet(viewsets.ModelViewSet):
         """Возвращает все продукты с пищевой ценностью."""
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
+        serializer_context = _catalog_rule_serializer_context()
         if page is not None:
-            serializer = FoodProductSerializer(page, many=True)
+            serializer = FoodProductSerializer(page, many=True, context=serializer_context)
             return self.get_paginated_response(serializer.data)
-        serializer = FoodProductSerializer(queryset, many=True)
+        serializer = FoodProductSerializer(queryset, many=True, context=serializer_context)
         return Response(serializer.data)
     
     @action(detail=True, methods=["get"], url_path="processing-options")
@@ -210,7 +220,7 @@ class FoodProductViewSet(viewsets.ModelViewSet):
             .order_by("id")
         )
         qs = self.filter_queryset(qs).distinct()
-        data = FoodProductSerializer(qs, many=True).data
+        data = FoodProductSerializer(qs, many=True, context=_catalog_rule_serializer_context()).data
         version = _compute_catalog_export_meta()["version"]
 
         # Можно положить версию в заголовок и в тело.
@@ -378,10 +388,14 @@ class RetailFoodProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return (
             RetailFoodProduct.objects.filter(created_by_user=self.request.user)
-            .select_related("related_food_group", "related_food_subgroup", "related_food_product")
+            .select_related(
+                "related_food_group",
+                "related_food_subgroup",
+                "related_food_product__subtype__product_type",
+            )
             .prefetch_related(
                 "retail_components",
-                "retail_components__food_component",
+                "retail_components__food_component__subtype__product_type",
                 "retail_additives",
                 "retail_additives__food_additive",
             )
@@ -392,6 +406,37 @@ class RetailFoodProductViewSet(viewsets.ModelViewSet):
         if self.action in {"create", "update", "partial_update"}:
             return RetailFoodProductWriteSerializer
         return RetailFoodProductSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.action in {"list", "retrieve"}:
+            context.update(_catalog_rule_serializer_context())
+        return context
+
+    def _serialize_retail_product(self, product):
+        refreshed_product = self.get_queryset().get(pk=product.pk)
+        return RetailFoodProductSerializer(
+            refreshed_product,
+            context={**super().get_serializer_context(), **_catalog_rule_serializer_context()},
+        ).data
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(
+            self._serialize_retail_product(serializer.instance),
+            status=status.HTTP_201_CREATED,
+            headers=self.get_success_headers(serializer.data),
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(self._serialize_retail_product(serializer.instance))
 
     def perform_create(self, serializer):
         now = timezone.now()

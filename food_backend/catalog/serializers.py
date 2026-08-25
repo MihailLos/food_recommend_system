@@ -103,12 +103,18 @@ class FoodProductSerializer(serializers.ModelSerializer):
 
     def _get_allergens_cached(self, obj):
         if not hasattr(obj, "_catalog_allergens_cache"):
-            obj._catalog_allergens_cache = get_allergens_for_product(obj)
+            obj._catalog_allergens_cache = get_allergens_for_product(
+                obj,
+                rule_cache=self.context.get("allergen_rule_cache"),
+            )
         return obj._catalog_allergens_cache
 
     def _get_child_rule_cached(self, obj):
         if not hasattr(obj, "_catalog_child_rule_cache"):
-            obj._catalog_child_rule_cache = pick_not_child_rule(obj)
+            obj._catalog_child_rule_cache = pick_not_child_rule(
+                obj,
+                rule_cache=self.context.get("not_child_rule_cache"),
+            )
         return obj._catalog_child_rule_cache
 
     def get_allergens(self, obj):
@@ -360,22 +366,44 @@ class RetailFoodProductSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created_by_user", "created_at", "updated_at", "is_ready_for_recommendation", "status"]
 
+    def _get_allergens_cached(self, obj):
+        if not hasattr(obj, "_retail_allergens_cache"):
+            obj._retail_allergens_cache = get_retail_product_allergens(
+                obj,
+                allergen_rule_cache=self.context.get("allergen_rule_cache"),
+            )
+        return obj._retail_allergens_cache
+
+    def _get_child_allowed_cached(self, obj):
+        if not hasattr(obj, "_retail_child_allowed_cache"):
+            obj._retail_child_allowed_cache = is_retail_product_child_allowed(
+                obj,
+                not_child_rule_cache=self.context.get("not_child_rule_cache"),
+            )
+        return obj._retail_child_allowed_cache
+
     def get_allergens(self, obj):
-        return get_retail_product_allergens(obj)
+        return self._get_allergens_cached(obj)
 
     def get_is_allergen(self, obj):
-        return len(get_retail_product_allergens(obj)) > 0
+        return len(self._get_allergens_cached(obj)) > 0
 
     def get_is_child_allowed(self, obj):
-        return is_retail_product_child_allowed(obj)
+        return self._get_child_allowed_cached(obj)
 
     def get_components(self, obj):
-        rows = obj.retail_components.all().order_by("position_index", "id")
-        return RetailFoodProductComponentSerializer(rows, many=True).data
+        rows = sorted(
+            obj.retail_components.all(),
+            key=lambda item: (item.position_index is None, item.position_index or 0, item.id),
+        )
+        return RetailFoodProductComponentSerializer(rows, many=True, context=self.context).data
 
     def get_additives(self, obj):
-        rows = obj.retail_additives.all().order_by("position_index", "id")
-        return RetailFoodProductAdditiveSerializer(rows, many=True).data
+        rows = sorted(
+            obj.retail_additives.all(),
+            key=lambda item: (item.position_index is None, item.position_index or 0, item.id),
+        )
+        return RetailFoodProductAdditiveSerializer(rows, many=True, context=self.context).data
 
 
 class RetailFoodProductWriteSerializer(serializers.ModelSerializer):
