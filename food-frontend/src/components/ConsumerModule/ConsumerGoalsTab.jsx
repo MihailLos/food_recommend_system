@@ -316,6 +316,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [limitCodes, setLimitCodes] = useState([]);
   const [overrideCodes, setOverrideCodes] = useState(new Set());
   const [dragTarget, setDragTarget] = useState("");
+  const [openGuidanceHelper, setOpenGuidanceHelper] = useState("");
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const bootstrappedRef = useRef(false);
   const saveTimerRef = useRef(null);
@@ -821,11 +822,43 @@ export default function ConsumerGoalsTab({ profileId }) {
         >
           <div style={{ border: "1px solid #d8ead7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start", order: isCompactLayout ? 2 : 1 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 700, color: "#2e7d32" }}>Пищевые вещества покрытия</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#2e7d32" }}>
+                Пищевые вещества покрытия
+                <button
+                  type="button"
+                  aria-label="Подробнее о пищевых веществах покрытия"
+                  aria-expanded={openGuidanceHelper === "coverage"}
+                  title="Подробнее"
+                  onClick={() => setOpenGuidanceHelper((current) => current === "coverage" ? "" : "coverage")}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    padding: 0,
+                    border: "1px solid #2e7d32",
+                    borderRadius: "50%",
+                    background: "#fff",
+                    color: "#2e7d32",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    lineHeight: 1,
+                  }}
+                >
+                  ?
+                </button>
+              </div>
               <button type="button" style={btn} onClick={clearCoverageCodes}>
                 Очистить все
               </button>
             </div>
+            {openGuidanceHelper === "coverage" && (
+              <InfoText>
+                Пищевые вещества, по которым продукт оценивается как источник поступления необходимых компонентов питания.
+                Чем большую долю целевой суточной величины покрывает продукт по таким пищевым веществам, тем выше его вклад
+                в показатель покрытия. По умолчанию установка пищевых веществ опирается на Методические рекомендации (МР)
+                2.3.1.0253-21 Роспотребнадзора, а также на рекомендации ВОЗ о здоровом питании. При желании, вы можете
+                изменить этот список.
+              </InfoText>
+            )}
             <NutrientList
               codes={coverageCodes}
               nutrientMeta={nutrientMeta}
@@ -838,11 +871,43 @@ export default function ConsumerGoalsTab({ profileId }) {
           </div>
           <div style={{ border: "1px solid #f1d7d7", borderRadius: 12, padding: 12, display: "grid", gap: 10, alignContent: "start", order: isCompactLayout ? 3 : 2 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 700, color: "#c62828" }}>Пищевые вещества лимитной нагрузки</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#c62828" }}>
+                Пищевые вещества лимитной нагрузки
+                <button
+                  type="button"
+                  aria-label="Подробнее о пищевых веществах лимитной нагрузки"
+                  aria-expanded={openGuidanceHelper === "limit"}
+                  title="Подробнее"
+                  onClick={() => setOpenGuidanceHelper((current) => current === "limit" ? "" : "limit")}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    padding: 0,
+                    border: "1px solid #c62828",
+                    borderRadius: "50%",
+                    background: "#fff",
+                    color: "#c62828",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    lineHeight: 1,
+                  }}
+                >
+                  ?
+                </button>
+              </div>
               <button type="button" style={btn} onClick={clearLimitCodes}>
                 Очистить все
               </button>
             </div>
+            {openGuidanceHelper === "limit" && (
+              <InfoText>
+                Пищевые вещества, для которых важно учитывать расход суточного лимита. Их наличие в продукте не означает,
+                что продукт является вредным, но высокий расход лимита снижает приоритет продукта среди аналогов. По
+                умолчанию установка пищевых веществ опирается на Методические рекомендации (МР) 2.3.1.0253-21
+                Роспотребнадзора, а также на рекомендации ВОЗ о здоровом питании. При желании, вы можете изменить этот
+                список.
+              </InfoText>
+            )}
             <NutrientList
               codes={limitCodes}
               nutrientMeta={nutrientMeta}
