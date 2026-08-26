@@ -986,6 +986,9 @@ export default function RetailProductModal({
               <div style={{ color: "#555", fontSize: 13, lineHeight: 1.5 }}>
                 Это базовый режим. Пользователь вручную вводит те пищевые вещества, которые указаны на упаковке.
               </div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                Пищевая ценность указывается на 100 г продукта.
+              </div>
             </div>
 
             {hasReferenceProduct && (
