@@ -14,6 +14,8 @@ import { ALL_COLUMNS } from "../config/column";
 import { exportJsonToExcel } from "../utils/exportExcel";
 import { fetchAllergens } from "../api/adminCatalog";
 
+const DEFAULT_VISIBLE_COLUMN_KEYS = ["name", "protein_g", "fats_g", "carbs_g", "energy_kcal"];
+
 /** утилиты */
 function applyFilters(items, filters) {
   let out = items;
@@ -153,9 +155,7 @@ export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
   }, []);
 
   // видимые столбцы: по умолчанию — продукт + ключевые пищевые вещества
-  const [visibleKeys, setVisibleKeys] = useState(new Set([
-    "name","protein_g","fats_g","carbs_g","energy_kcal","fiber_g","alcohol_pct"
-  ]));
+  const [visibleKeys, setVisibleKeys] = useState(new Set(DEFAULT_VISIBLE_COLUMN_KEYS));
   const visibleColumns = useMemo(
     () => ALL_COLUMNS.filter(c => visibleKeys.has(c.key)),
     [visibleKeys]
@@ -167,9 +167,20 @@ export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
       if (!next.has("name")) next.add("name"); // «name» обязателен
       return next;
     });
+    if (visibleKeys.has(key) && key !== "name") {
+      setFilters((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    }
   };
   const selectAllColumns = () => {
     setVisibleKeys(new Set(ALL_COLUMNS.map(c => c.key)));
+  };
+  const clearAllColumns = () => {
+    setVisibleKeys(new Set(["name"]));
+    setFilters((current) => ({ typeId: current.typeId || null }));
   };
   const getTypeKey = (group) => group.typeId ?? group.typeName;
 
@@ -397,12 +408,13 @@ export default function ProductsPage({ catalogScope, isAuthenticated, user }) {
             visibleKeys={visibleKeys}
             onToggle={toggleColumn}
             onSelectAll={selectAllColumns}
-            onClearAll={() => setVisibleKeys(new Set(["name"]))}
+            onClearAll={clearAllColumns}
           />
           <FiltersPanel
             filters={filters}
             onChange={setFilters}
             types={types}
+            visibleColumns={visibleColumns}
           />
         </div>
       </aside>
