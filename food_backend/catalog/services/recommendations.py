@@ -791,7 +791,9 @@ def _build_group_metrics(
     limit_qua1, limit_qua2, limit_qua3 = _compute_quartiles(limit_values)
     qua1, qua2, qua3 = _compute_quartiles(list(score_map.values()))
     coverage_percentile = _build_rank_percent_map(coverage_sum_map, invert=False) if has_coverage_dimension else {}
-    limit_percentile = _build_rank_percent_map(limit_sum_map, invert=True) if has_limit_dimension else {}
+    # Для лимитной нагрузки процентиль отражает саму нагрузку: чем он выше,
+    # тем выше расход суточного лимита среди продуктов множества сравнения.
+    limit_percentile = _build_rank_percent_map(limit_sum_map, invert=False) if has_limit_dimension else {}
     score_percentile = _build_rank_percent_map(score_map, invert=False)
 
     return {

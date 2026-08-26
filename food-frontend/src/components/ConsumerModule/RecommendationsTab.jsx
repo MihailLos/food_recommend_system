@@ -153,7 +153,7 @@ function describeQuartilePosition(percent, direction) {
   }
   if (percent >= 75) return `Лимитная нагрузка выше, чем у ${rounded} % продуктов выборки. Это верхний квартиль нагрузки.`;
   if (percent >= 50) return `Лимитная нагрузка выше медианы и выше, чем у ${rounded} % продуктов выборки.`;
-  if (percent >= 25) return `Лимитная нагрузка ниже медианы, но все еще выше, чем у ${rounded} % продуктов выборки.`;
+  if (percent >= 25) return `Лимитная нагрузка ниже медианы, но выше, чем у ${rounded} % продуктов выборки.`;
   return `Лимитная нагрузка находится в нижнем квартиле и выше, чем только у ${rounded} % продуктов выборки.`;
 }
 
@@ -473,7 +473,7 @@ function DetailsModal({ item, onClose }) {
               percent={limitPercent}
               color="#f57c00"
               background="rgba(255, 233, 206, 0.95)"
-              description={describeQuartilePosition(limitPercent, "limit")}
+              description={`${describeQuartilePosition(limitPercent, "limit")} Чем выше процент, тем выше лимитная нагрузка.`}
             />
           )}
         </div>
