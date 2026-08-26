@@ -103,12 +103,15 @@ function normalizeList(data) {
 
 function fmt(value, digits = 1) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  return value.toFixed(digits);
+  return new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value);
 }
 
 function fmtPercent(value) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  return `${value.toFixed(1)}%`;
+  return `${fmt(value, 1)} %`;
 }
 
 function levelMeta(level) {
@@ -141,17 +144,17 @@ function limitLevelMeta(level) {
 
 function describeQuartilePosition(percent, direction) {
   if (typeof percent !== "number" || !Number.isFinite(percent)) return "Положение в выборке не определено.";
-  const rounded = percent.toFixed(1);
+  const rounded = fmt(percent, 1);
   if (direction === "coverage") {
-    if (percent >= 75) return `Продукт входит в верхний квартиль по покрытию и выше, чем у ${rounded}% продуктов выборки.`;
-    if (percent >= 50) return `Продукт выше медианы по покрытию и выше, чем у ${rounded}% продуктов выборки.`;
-    if (percent >= 25) return `Продукт находится ниже медианы по покрытию, но выше, чем у ${rounded}% продуктов выборки.`;
-    return `Продукт находится в нижнем квартиле по покрытию и выше, чем только у ${rounded}% продуктов выборки.`;
+    if (percent >= 75) return `Продукт входит в верхний квартиль по покрытию и выше, чем у ${rounded} % продуктов выборки.`;
+    if (percent >= 50) return `Продукт выше медианы по покрытию и выше, чем у ${rounded} % продуктов выборки.`;
+    if (percent >= 25) return `Продукт находится ниже медианы по покрытию, но выше, чем у ${rounded} % продуктов выборки.`;
+    return `Продукт находится в нижнем квартиле по покрытию и выше, чем только у ${rounded} % продуктов выборки.`;
   }
-  if (percent >= 75) return `Лимитная нагрузка выше, чем у ${rounded}% продуктов выборки. Это верхний квартиль нагрузки.`;
-  if (percent >= 50) return `Лимитная нагрузка выше медианы и выше, чем у ${rounded}% продуктов выборки.`;
-  if (percent >= 25) return `Лимитная нагрузка ниже медианы, но все еще выше, чем у ${rounded}% продуктов выборки.`;
-  return `Лимитная нагрузка находится в нижнем квартиле и выше, чем только у ${rounded}% продуктов выборки.`;
+  if (percent >= 75) return `Лимитная нагрузка выше, чем у ${rounded} % продуктов выборки. Это верхний квартиль нагрузки.`;
+  if (percent >= 50) return `Лимитная нагрузка выше медианы и выше, чем у ${rounded} % продуктов выборки.`;
+  if (percent >= 25) return `Лимитная нагрузка ниже медианы, но все еще выше, чем у ${rounded} % продуктов выборки.`;
+  return `Лимитная нагрузка находится в нижнем квартиле и выше, чем только у ${rounded} % продуктов выборки.`;
 }
 
 function QuartileScale({ title, percent, color, background, description }) {
@@ -217,8 +220,8 @@ function QuartileScale({ title, percent, color, background, description }) {
           )}
         </div>
         <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", fontSize: 11, color: "#666" }}>
-          <span>0%</span>
-          <span>100%</span>
+          <span>0 %</span>
+          <span>100 %</span>
         </div>
       </div>
       <div style={{ fontSize: 13, color: "#444", lineHeight: 1.5 }}>
@@ -985,7 +988,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
             <div style={{ fontSize: 13, color: "#555" }}>{loadingDetail || "Выполняется расчет..."}</div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#2f5f32", fontWeight: 600 }}>
               <span>Готовность</span>
-              <span>{Math.max(0, Math.min(100, Math.round(loadingProgress)))}%</span>
+              <span>{Math.max(0, Math.min(100, Math.round(loadingProgress)))} %</span>
             </div>
             <div style={{ height: 12, borderRadius: 999, background: "#edf3ec", overflow: "hidden" }}>
               <div
@@ -1408,7 +1411,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
             </div>
             <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Средняя приоритетность</div>
-              <div>{stats.avgPriority == null ? "—" : `${stats.avgPriority}%`}</div>
+              <div>{fmtPercent(stats.avgPriority)}</div>
             </div>
             <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Исключено по ограничениям</div>
