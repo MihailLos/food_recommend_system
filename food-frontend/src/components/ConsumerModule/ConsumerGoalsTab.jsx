@@ -831,8 +831,8 @@ export default function ConsumerGoalsTab({ profileId }) {
                   title="Подробнее"
                   onClick={() => setOpenGuidanceHelper((current) => current === "coverage" ? "" : "coverage")}
                   style={{
-                    width: 20,
-                    height: 20,
+                    width: 10,
+                    height: 10,
                     padding: 0,
                     border: "1px solid #2e7d32",
                     borderRadius: "50%",
@@ -880,8 +880,8 @@ export default function ConsumerGoalsTab({ profileId }) {
                   title="Подробнее"
                   onClick={() => setOpenGuidanceHelper((current) => current === "limit" ? "" : "limit")}
                   style={{
-                    width: 20,
-                    height: 20,
+                    width: 10,
+                    height: 10,
                     padding: 0,
                     border: "1px solid #c62828",
                     borderRadius: "50%",
