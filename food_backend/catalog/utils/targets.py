@@ -132,7 +132,9 @@ def _load_guidance_lists(goal: Optional[ConsumerGoal]) -> Dict[str, list[str]]:
         }
 
     rows = list(GoalNutrientPreference.objects.filter(goal_id=goal.id).order_by("id"))
-    if not rows or not goal.preferences_replace_base:
+    # Пустой список при включённом preferences_replace_base — это осознанный
+    # выбор пользователя. Не подменяем его значениями по умолчанию.
+    if not goal.preferences_replace_base:
         return {
             "coverage_codes": list(DEFAULT_COVERAGE_CODES),
             "limit_codes": list(DEFAULT_LIMIT_CODES),
