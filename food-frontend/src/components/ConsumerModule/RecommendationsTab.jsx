@@ -114,6 +114,67 @@ function fmtPercent(value) {
   return `${fmt(value, 1)} %`;
 }
 
+function ScorePercentHelper({ score, isOpen, onToggle }) {
+  const coverage = score?.coverage_sum;
+  const limit = score?.limit_sum;
+  const balance = score?.priority_raw;
+  const rank = score?.balance_rank;
+  const rankStart = score?.balance_rank_start;
+  const rankEnd = score?.balance_rank_end;
+  const count = score?.comparison_count;
+  const percent = score?.score_percent_100;
+  const hasCoverage = typeof coverage === "number" && Number.isFinite(coverage);
+  const hasLimit = typeof limit === "number" && Number.isFinite(limit);
+  const hasCalculation = [balance, rank, rankStart, rankEnd, count, percent]
+    .every((value) => typeof value === "number" && Number.isFinite(value));
+
+  if (!hasCalculation || (!hasCoverage && !hasLimit)) return null;
+
+  const placeText = rankStart === rankEnd
+    ? `место ${rankStart}`
+    : `места ${rankStart}–${rankEnd}`;
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-label="Показать расчет итоговой оценки"
+        title="Как рассчитан процент"
+        style={{
+          width: 22,
+          height: 22,
+          padding: 0,
+          borderRadius: "50%",
+          border: "1px solid #9fb2c9",
+          background: "#fff",
+          color: "#1f3b67",
+          cursor: "pointer",
+          fontWeight: 700,
+        }}
+      >
+        ⓘ
+      </button>
+      {isOpen && (
+        <div style={{ marginTop: 8, padding: 10, border: "1px solid #d9e2ee", borderRadius: 8, background: "#f8fbff", fontSize: 12, lineHeight: 1.5, color: "#34495e" }}>
+          <div style={{ fontWeight: 700, color: "#1f3b67", marginBottom: 4 }}>Как получена оценка {fmtPercent(percent)}</div>
+          {hasCoverage && <div>Покрытие: {fmt(coverage, 2)}.</div>}
+          {hasLimit && <div>Лимитная нагрузка: {fmt(limit, 2)}.</div>}
+          {hasCoverage && hasLimit && <div>Баланс: {fmt(coverage, 2)} − {fmt(limit, 2)} = {fmt(balance, 2)}.</div>}
+          {hasCoverage && !hasLimit && <div>Баланс: {fmt(coverage, 2)}.</div>}
+          {!hasCoverage && hasLimit && <div>Баланс: −{fmt(limit, 2)} = {fmt(balance, 2)}.</div>}
+          <div>Среди {count} продуктов этот баланс занял {placeText}; средний ранг — {fmt(rank, 1)}.</div>
+          {count > 1
+            ? <div>Итог: ({fmt(rank, 1)} − 1) / ({count} − 1) × 100 = {fmtPercent(percent)}.</div>
+            : <div>В множестве один продукт, поэтому его итоговая оценка — 100 %.</div>}
+          {rankStart !== rankEnd && <div style={{ marginTop: 4 }}>Одинаковый баланс даёт одинаковую оценку.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function levelMeta(level) {
   const code = level?.code || "";
   if (code === "high") {
@@ -557,6 +618,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
+  const [scoreHelperProductId, setScoreHelperProductId] = useState(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingDetail, setLoadingDetail] = useState("");
   const [isCompactLayout, setIsCompactLayout] = useState(false);
@@ -1545,6 +1607,13 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                         <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
                           Балансовая оценка: {fmt(score.priority_raw, 2)}
                         </div>
+                        <ScorePercentHelper
+                          score={score}
+                          isOpen={scoreHelperProductId === item.product?.id}
+                          onToggle={() => setScoreHelperProductId((currentId) => (
+                            currentId === item.product?.id ? null : item.product?.id
+                          ))}
+                        />
                       </td>
                       <td style={{ padding: "10px 8px", borderBottom: "1px solid #f3f3f3", width: 140 }}>
                         <button type="button" style={btn} onClick={() => setSelectedItem(item)}>

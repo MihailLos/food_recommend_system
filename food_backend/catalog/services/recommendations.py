@@ -450,6 +450,34 @@ def _build_rank_percent_map(values_by_product: Dict[int, float], invert: bool = 
     return result
 
 
+def _build_rank_details_map(values_by_product: Dict[int, float]) -> Dict[int, dict]:
+    """Return the rank data used to calculate a percentile score."""
+    if not values_by_product:
+        return {}
+
+    ordered = sorted(values_by_product.items(), key=lambda pair: pair[1])
+    total = len(ordered)
+    result: Dict[int, dict] = {}
+    index = 0
+    while index < total:
+        end = index
+        while end + 1 < total and ordered[end + 1][1] == ordered[index][1]:
+            end += 1
+        rank_start = index + 1
+        rank_end = end + 1
+        avg_rank = (rank_start + rank_end) / 2.0
+        for position in range(index, end + 1):
+            result[ordered[position][0]] = {
+                "rank": avg_rank,
+                "rank_start": rank_start,
+                "rank_end": rank_end,
+                "comparison_count": total,
+            }
+        index = end + 1
+
+    return result
+
+
 def _quartile_bounds_to_score(
     value: Optional[float],
     qua1: Optional[float],
@@ -698,6 +726,10 @@ def _build_group_metrics(
             "limit_percent_100": None,
             "priority_raw": None,
             "score_percent_100": None,
+            "balance_rank": None,
+            "balance_rank_start": None,
+            "balance_rank_end": None,
+            "comparison_count": None,
             "coverage_level": None,
             "limit_level": None,
             "has_coverage_dimension": has_coverage_dimension,
@@ -795,6 +827,7 @@ def _build_group_metrics(
     # тем выше расход суточного лимита среди продуктов множества сравнения.
     limit_percentile = _build_rank_percent_map(limit_sum_map, invert=False) if has_limit_dimension else {}
     score_percentile = _build_rank_percent_map(score_map, invert=False)
+    score_rank_details = _build_rank_details_map(score_map)
 
     return {
         product_id: {
@@ -811,6 +844,10 @@ def _build_group_metrics(
             "limit_percent_100": limit_percentile.get(product_id),
             "priority_raw": score_map.get(product_id),
             "score_percent_100": score_percentile.get(product_id),
+            "balance_rank": score_rank_details.get(product_id, {}).get("rank"),
+            "balance_rank_start": score_rank_details.get(product_id, {}).get("rank_start"),
+            "balance_rank_end": score_rank_details.get(product_id, {}).get("rank_end"),
+            "comparison_count": score_rank_details.get(product_id, {}).get("comparison_count"),
             "coverage_level": _level_from_sum(coverage_sum_map.get(product_id), coverage_qua1, coverage_qua3) if has_coverage_dimension else None,
             "limit_level": _level_from_sum(limit_sum_map.get(product_id), limit_qua1, limit_qua3) if has_limit_dimension else None,
             "has_coverage_dimension": has_coverage_dimension,
@@ -1028,6 +1065,10 @@ def recommend(
         limit_level = metrics.get("limit_level")
         priority_raw = metrics.get("priority_raw")
         score_percent_100 = metrics.get("score_percent_100")
+        balance_rank = metrics.get("balance_rank")
+        balance_rank_start = metrics.get("balance_rank_start")
+        balance_rank_end = metrics.get("balance_rank_end")
+        comparison_count = metrics.get("comparison_count")
         qua1 = metrics.get("qua1")
         qua2 = metrics.get("qua2")
         qua3 = metrics.get("qua3")
@@ -1064,6 +1105,10 @@ def recommend(
             "score_percent_100": score_percent_100,
             "percentile_score": None if score_percent_100 is None else score_percent_100 / 100.0,
             "priority_raw": priority_raw,
+            "balance_rank": balance_rank,
+            "balance_rank_start": balance_rank_start,
+            "balance_rank_end": balance_rank_end,
+            "comparison_count": comparison_count,
             "coverage_sum": coverage_sum,
             "limit_sum": limit_sum,
             "coverage_percent_100": coverage_percent_100,
@@ -1137,6 +1182,10 @@ def recommend(
                     "limit_level": limit_level,
                     "category_adjustment": category_adjustment,
                     "priority_raw": priority_raw,
+                    "balance_rank": balance_rank,
+                    "balance_rank_start": balance_rank_start,
+                    "balance_rank_end": balance_rank_end,
+                    "comparison_count": comparison_count,
                 },
                 "method": {
                     "basis": "coverage_minus_limit_quartile_model",
