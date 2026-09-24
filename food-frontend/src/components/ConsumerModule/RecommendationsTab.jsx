@@ -114,6 +114,17 @@ function fmtPercent(value) {
   return `${fmt(value, 1)} %`;
 }
 
+function formatNutrientUnit(unit) {
+  const rawUnit = String(unit || "").trim();
+  const unitMap = {
+    g: "г",
+    mg: "мг",
+    kcal: "ккал",
+    index: "мг",
+  };
+  return unitMap[rawUnit] || rawUnit;
+}
+
 function ScorePercentHelper({ score, isOpen, onToggle }) {
   const coverage = score?.coverage_sum;
   const limit = score?.limit_sum;
@@ -424,6 +435,7 @@ function NutrientQuartileHelper({ signal, isOpen, onToggle }) {
   const share = signal?.daily_share;
   const value = signal?.value_100g;
   const target = signal?.target_day;
+  const unit = formatNutrientUnit(signal?.unit);
   const hasShare = typeof share === "number" && Number.isFinite(share);
   const hasBounds = [q1, q2, q3, count]
     .every((item) => typeof item === "number" && Number.isFinite(item));
@@ -434,7 +446,7 @@ function NutrientQuartileHelper({ signal, isOpen, onToggle }) {
   if (typeof comparableValue !== "number" || !Number.isFinite(comparableValue)) return null;
 
   const formatComparable = (item) => (
-    hasShare ? fmtPercent(item * 100) : `${fmt(item, 2)} ${signal.unit || ""}`.trim()
+    hasShare ? fmtPercent(item * 100) : `${fmt(item, 2)} ${unit}`.trim()
   );
   const interval = comparableValue <= q1
     ? "≤ Q1"
@@ -444,8 +456,8 @@ function NutrientQuartileHelper({ signal, isOpen, onToggle }) {
         ? "(Q2; Q3]"
         : "> Q3";
   const shareText = hasShare && typeof target === "number" && Number.isFinite(target)
-    ? `Доля ориентира: ${formatComparable(share)} = ${fmt(value, 2)} ${signal.unit || ""} / ${fmt(target, 2)} ${signal.unit || ""}.`
-    : `Для сравнения использовано значение: ${fmt(value, 2)} ${signal.unit || ""}.`;
+    ? `Доля ориентира: ${formatComparable(share)} = ${fmt(value, 2)} ${unit} / ${fmt(target, 2)} ${unit}.`
+    : `Для сравнения использовано значение: ${fmt(value, 2)} ${unit}.`;
   const roleText = signal.direction === "preferred"
     ? "Для покрытия больший балл увеличивает итоговую сумму покрытия."
     : "Для лимитной нагрузки больший балл увеличивает итоговую нагрузку.";
@@ -516,10 +528,10 @@ function SignalTable({ signals }) {
                 {signal.direction === "preferred" ? "Покрытие" : "Лимитная нагрузка"}
               </td>
               <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3" }}>
-                {fmt(signal.value_100g, 2)} {signal.unit || ""}
+                {fmt(signal.value_100g, 2)} {formatNutrientUnit(signal.unit)}
               </td>
               <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3" }}>
-                {signal.target_day == null ? "—" : `${fmt(signal.target_day, 2)} ${signal.unit || ""}`}
+                {signal.target_day == null ? "—" : `${fmt(signal.target_day, 2)} ${formatNutrientUnit(signal.unit)}`}
               </td>
               <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3" }}>
                 {fmtPercent(signal.daily_share_pct)}
