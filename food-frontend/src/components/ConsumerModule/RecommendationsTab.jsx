@@ -416,7 +416,79 @@ function NutrientPillList({ items, emptyText, tone = "neutral" }) {
   );
 }
 
+function NutrientQuartileHelper({ signal, isOpen, onToggle }) {
+  const q1 = signal?.quartile_q1;
+  const q2 = signal?.quartile_q2;
+  const q3 = signal?.quartile_q3;
+  const count = signal?.comparison_count;
+  const share = signal?.daily_share;
+  const value = signal?.value_100g;
+  const target = signal?.target_day;
+  const hasShare = typeof share === "number" && Number.isFinite(share);
+  const hasBounds = [q1, q2, q3, count]
+    .every((item) => typeof item === "number" && Number.isFinite(item));
+
+  if (!hasBounds) return null;
+
+  const comparableValue = hasShare ? share : value;
+  if (typeof comparableValue !== "number" || !Number.isFinite(comparableValue)) return null;
+
+  const formatComparable = (item) => (
+    hasShare ? fmtPercent(item * 100) : `${fmt(item, 2)} ${signal.unit || ""}`.trim()
+  );
+  const interval = comparableValue <= q1
+    ? "≤ Q1"
+    : comparableValue <= q2
+      ? "(Q1; Q2]"
+      : comparableValue <= q3
+        ? "(Q2; Q3]"
+        : "> Q3";
+  const shareText = hasShare && typeof target === "number" && Number.isFinite(target)
+    ? `Доля ориентира: ${formatComparable(share)} = ${fmt(value, 2)} ${signal.unit || ""} / ${fmt(target, 2)} ${signal.unit || ""}.`
+    : `Для сравнения использовано значение: ${fmt(value, 2)} ${signal.unit || ""}.`;
+  const roleText = signal.direction === "preferred"
+    ? "Для покрытия больший балл увеличивает итоговую сумму покрытия."
+    : "Для лимитной нагрузки больший балл увеличивает итоговую нагрузку.";
+
+  return (
+    <span style={{ position: "relative", display: "inline-flex", marginLeft: 6, verticalAlign: "middle" }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-label={`Показать расчет квартильного балла для ${signal.ru_name}`}
+        title="Как получен квартильный балл"
+        style={{
+          width: 20,
+          height: 20,
+          padding: 0,
+          borderRadius: "50%",
+          border: "1px solid #9fb2c9",
+          background: "#fff",
+          color: "#1f3b67",
+          cursor: "pointer",
+          fontWeight: 700,
+          lineHeight: 1,
+        }}
+      >
+        ⓘ
+      </button>
+      {isOpen && (
+        <span style={{ position: "absolute", zIndex: 10, top: 26, right: 0, width: 300, padding: 10, border: "1px solid #d9e2ee", borderRadius: 8, background: "#f8fbff", boxShadow: "0 4px 14px rgba(0,0,0,0.14)", color: "#34495e", fontSize: 12, fontWeight: 400, lineHeight: 1.5, textAlign: "left" }}>
+          <span style={{ display: "block", marginBottom: 4, color: "#1f3b67", fontWeight: 700 }}>Как получен балл {signal.quartile_score} из 4</span>
+          <span style={{ display: "block" }}>{shareText}</span>
+          <span style={{ display: "block", marginTop: 4 }}>В сравнении: {count} продуктов с известным значением вещества.</span>
+          <span style={{ display: "block" }}>Границы: Q1 — {formatComparable(q1)}, Q2 — {formatComparable(q2)}, Q3 — {formatComparable(q3)}.</span>
+          <span style={{ display: "block" }}>Значение {formatComparable(comparableValue)} попадает в {interval}, поэтому балл — {signal.quartile_score}.</span>
+          <span style={{ display: "block", marginTop: 4 }}>{roleText}</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 function SignalTable({ signals }) {
+  const [openSignalCode, setOpenSignalCode] = useState(null);
   if (!Array.isArray(signals) || signals.length === 0) {
     return <div style={{ color: "#666", fontSize: 13 }}>Нет детализированных данных по пищевым веществам.</div>;
   }
@@ -455,7 +527,16 @@ function SignalTable({ signals }) {
               <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3" }}>
                 {fmtPercent((signal.percentile_q || 0) * 100)}
               </td>
-              <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3" }}>{signal.quartile_score ?? "—"}</td>
+              <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3", fontWeight: 700, whiteSpace: "nowrap" }}>
+                {signal.quartile_score ?? "—"}
+                <NutrientQuartileHelper
+                  signal={signal}
+                  isOpen={openSignalCode === signal.code}
+                  onToggle={() => setOpenSignalCode((currentCode) => (
+                    currentCode === signal.code ? null : signal.code
+                  ))}
+                />
+              </td>
             </tr>
           ))}
         </tbody>

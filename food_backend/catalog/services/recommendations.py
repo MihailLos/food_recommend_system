@@ -526,6 +526,7 @@ def _build_signal(
     nd: NutrientDictionary,
     percentile_q: float,
     quartile_score: int,
+    quartile_bounds: Dict[str, Optional[float]],
     targets_day: Dict[str, float],
     source: str,
 ) -> dict:
@@ -546,6 +547,10 @@ def _build_signal(
         "daily_share_pct": None if daily_share is None else daily_share * 100.0,
         "percentile_q": percentile_q,
         "quartile_score": quartile_score,
+        "quartile_q1": quartile_bounds.get("q1"),
+        "quartile_q2": quartile_bounds.get("q2"),
+        "quartile_q3": quartile_bounds.get("q3"),
+        "comparison_count": quartile_bounds.get("comparison_count"),
         "correspondence_a": quartile_score,
         "source": source,
         "show_in_explain": bool((_safe_float(value_100g) or 0.0) > 0.0),
@@ -657,9 +662,10 @@ def _build_score_maps_for_pool(
     active_roles: Dict[str, str],
     nutrient_map: Dict[str, NutrientDictionary],
     targets_day: Dict[str, float],
-) -> Tuple[Dict[str, Dict[int, float]], Dict[str, Dict[int, int]]]:
+) -> Tuple[Dict[str, Dict[int, float]], Dict[str, Dict[int, int]], Dict[str, dict]]:
     percentile_maps: Dict[str, Dict[int, float]] = {}
     quartile_score_maps: Dict[str, Dict[int, int]] = {}
+    quartile_bounds_by_code: Dict[str, dict] = {}
 
     for code in active_roles:
         nd = nutrient_map.get(code)
@@ -682,13 +688,19 @@ def _build_score_maps_for_pool(
         percentile_map = _build_percentile_map(values_by_product)
         qua1, qua2, qua3 = _compute_quartiles(list(values_by_product.values()))
         percentile_maps[code] = percentile_map
+        quartile_bounds_by_code[code] = {
+            "q1": qua1,
+            "q2": qua2,
+            "q3": qua3,
+            "comparison_count": len(values_by_product),
+        }
         quartile_score_maps[code] = {
             product_id: _quartile_bounds_to_score(value, qua1, qua2, qua3)
             for product_id, value in values_by_product.items()
             if _quartile_bounds_to_score(value, qua1, qua2, qua3) is not None
         }
 
-    return percentile_maps, quartile_score_maps
+    return percentile_maps, quartile_score_maps, quartile_bounds_by_code
 
 
 def _build_group_metrics(
@@ -744,7 +756,7 @@ def _build_group_metrics(
     if not active_roles or not allowed_products:
         return empty_payload
 
-    percentile_maps, quartile_score_maps = _build_score_maps_for_pool(
+    percentile_maps, quartile_score_maps, quartile_bounds_by_code = _build_score_maps_for_pool(
         allowed_products=allowed_products,
         active_roles=active_roles,
         nutrient_map=nutrient_map,
@@ -783,6 +795,7 @@ def _build_group_metrics(
                 nd=nd,
                 percentile_q=percentile_q,
                 quartile_score=quartile_score,
+                quartile_bounds=quartile_bounds_by_code.get(code, {}),
                 targets_day=targets_day,
                 source="user" if code in prefs_by_code else "system",
             )
@@ -1159,7 +1172,7 @@ def recommend(
                     "qua3": qua3,
                 },
                 "active_nutrients_count": len(all_signals),
-                "signals": visible_signals,
+                "signals": all_signals,
                 "base_signals": all_signals,
                 "targets_day": targets_day,
                 "targets_meta": {
