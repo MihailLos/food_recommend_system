@@ -883,6 +883,7 @@ class ConsumerGoalSerializer(serializers.ModelSerializer):
             "title",
             "goal_type",
             "energy_delta_kcal",
+            "target_mode",
             "protein_pct",
             "fat_pct",
             "carb_pct",

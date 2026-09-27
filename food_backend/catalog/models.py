@@ -629,6 +629,13 @@ class ConsumerGoal(models.Model):
         (GOAL_MAINTAIN, "Maintain"),
     ]
 
+    TARGET_MODE_NORMATIVE = "normative"
+    TARGET_MODE_CALCULATED = "calculated"
+    TARGET_MODE_CHOICES = [
+        (TARGET_MODE_NORMATIVE, "Normative"),
+        (TARGET_MODE_CALCULATED, "Calculated"),
+    ]
+
     id = models.AutoField(primary_key=True)
 
     # FK на существующую таблицу ConsumerProfiles (у неё PK в колонке "ID")
@@ -644,6 +651,11 @@ class ConsumerGoal(models.Model):
 
     energy_delta_kcal = models.IntegerField(
         null=True, blank=True, db_column="energy_delta_kcal"
+    )
+    target_mode = models.TextField(
+        choices=TARGET_MODE_CHOICES,
+        default=TARGET_MODE_CALCULATED,
+        db_column="target_mode",
     )
 
     protein_pct = models.DecimalField(

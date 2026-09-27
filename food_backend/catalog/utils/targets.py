@@ -19,6 +19,34 @@ ADULT_CHOLESTEROL_NORM_MG_DAY = 300.0
 DEFAULT_WATER_G_DAY = 2000.0
 DEFAULT_GUIDANCE_TITLE = "Пищевые ориентиры"
 
+TARGET_MODE_LABELS = {
+    ConsumerGoal.TARGET_MODE_NORMATIVE: "Нормативный",
+    ConsumerGoal.TARGET_MODE_CALCULATED: "Расчётный",
+}
+SEX_LABELS = {"male": "мужчина", "female": "женщина"}
+
+
+def _number(value: float) -> str:
+    return f"{float(value):.2f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
+def _macro_source_text(profile: ConsumerProfile, macro_row: MacronutrientsNormsMR) -> str:
+    age_max = f"–{macro_row.age_max}" if macro_row.age_max is not None else "+"
+    return (
+        f"Таблица МР «Macronutrients_Norms_MR», строка #{macro_row.id}: "
+        f"{SEX_LABELS.get(profile.sex, profile.sex)}, возраст {macro_row.age_min}{age_max} лет, "
+        f"группа труда {profile.work_group_id}."
+    )
+
+
+def _base_detail(source_text: str, value: float, unit: str) -> Dict:
+    return {
+        "source": "normative",
+        "source_text": source_text,
+        "formula": None,
+        "calculation": f"Значение из БД: {_number(value)} {unit}.",
+    }
+
 DEFAULT_COVERAGE_CODES = [
     "protein_g",
     "fats_g",
@@ -94,6 +122,7 @@ def ensure_active_goal(profile: ConsumerProfile) -> ConsumerGoal:
         title=DEFAULT_GUIDANCE_TITLE,
         goal_type=ConsumerGoal.GOAL_MAINTAIN,
         energy_delta_kcal=0,
+        target_mode=ConsumerGoal.TARGET_MODE_CALCULATED,
         preferences_replace_base=False,
         is_active=True,
     )
@@ -219,6 +248,7 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
     tdee_kcal_day = float(res.tdee_kcal_day)
 
     goal = ensure_active_goal(profile)
+    target_mode = goal.target_mode or ConsumerGoal.TARGET_MODE_CALCULATED
 
     macro_row = _find_macro_norm_row(profile)
 
@@ -238,16 +268,28 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
 
     manual = bool(
         goal
+        and target_mode == ConsumerGoal.TARGET_MODE_CALCULATED
         and goal.protein_pct is not None
         and goal.fat_pct is not None
         and goal.carb_pct is not None
     )
 
-    target_energy_pre_limit_kcal_day = tdee_kcal_day + energy_delta_kcal
-    target_energy_kcal_day = target_energy_pre_limit_kcal_day
-    target_energy_kcal_day = max(target_energy_kcal_day, 0.0)
+    if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE:
+        target_energy_pre_limit_kcal_day = mr_energy_kcal_day
+        target_energy_kcal_day = mr_energy_kcal_day
+    else:
+        target_energy_pre_limit_kcal_day = tdee_kcal_day + energy_delta_kcal
+        target_energy_kcal_day = max(target_energy_pre_limit_kcal_day, 0.0)
 
-    if manual:
+    if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE:
+        protein_pct = mr_protein_pct
+        fat_pct = mr_fat_pct
+        carb_pct = mr_carb_pct
+        target_protein_g_day = mr_protein_g_day
+        target_fat_g_day = mr_fat_g_day
+        target_carb_g_day = mr_carb_g_day
+        macros_mode = "mr_table"
+    elif manual:
         protein_pct = float(goal.protein_pct)
         fat_pct = float(goal.fat_pct)
         carb_pct = float(goal.carb_pct)
@@ -287,7 +329,11 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
 
         "goal_id": goal.id if goal else None,
         "goal_type": goal.goal_type if goal else None,
+        # В нормативном режиме значение не участвует в расчёте, но сохраняется
+        # для возврата пользователя в расчётный режим.
         "energy_delta_kcal": energy_delta_kcal,
+        "target_mode": target_mode,
+        "target_mode_label": TARGET_MODE_LABELS[target_mode],
         "energy_calc": {
             "bmr_kcal_day": round(float(res.bmr_kcal_day), 2),
             "kfa": round(float(res.kfa), 2),
@@ -368,9 +414,104 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
             "sex": profile.sex,
             "age_years": int(profile.age_years),
             "macro_norm_row_id": macro_row.id,
-            "target_energy_source": "tdee_plus_goal_delta",
+            "target_energy_source": (
+                "mr_table" if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE else "tdee_plus_goal_delta"
+            ),
         },
     }
+
+    macro_source = _macro_source_text(profile, macro_row)
+    energy_detail = (
+        _base_detail(macro_source, mr_energy_kcal_day, "ккал/сут")
+        if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE
+        else {
+            "source": "calculated",
+            "source_text": "Расчёт по данным профиля и коэффициенту физической активности.",
+            "formula": "ВОО = 9,99 × масса + 6,25 × рост − 4,92 × возраст + поправка пола; TDEE = ВОО × КФА; целевая энергия = TDEE + изменение энергии.",
+            "calculation": (
+                f"ВОО = 9,99 × {_number(profile.weight_kg)} + 6,25 × {_number(profile.height_cm)} "
+                f"− 4,92 × {_number(profile.age_years)} {'+ 5' if profile.sex == 'male' else '− 161'} "
+                f"= {_number(res.bmr_kcal_day)} ккал/сут; "
+                f"TDEE = {_number(res.bmr_kcal_day)} × {_number(res.kfa)} = {_number(tdee_kcal_day)} ккал/сут; "
+                f"целевая энергия = {_number(tdee_kcal_day)} {'+' if energy_delta_kcal >= 0 else '−'} "
+                f"{_number(abs(energy_delta_kcal))} = {_number(target_energy_kcal_day)} ккал/сут."
+            ),
+        }
+    )
+    target_details = {
+        "protein_g": (
+            _base_detail(macro_source, mr_protein_g_day, "г/сут")
+            if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE
+            else {
+                "source": "calculated",
+                "source_text": macro_source,
+                "formula": "Белки = целевая энергия × (белки МР × 4 / энергия МР) / 4.",
+                "calculation": f"{_number(target_energy_kcal_day)} × ({_number(mr_protein_g_day)} × 4 / {_number(mr_energy_kcal_day)}) / 4 = {_number(target_protein_g_day)} г/сут.",
+            }
+        ),
+        "fats_g": (
+            _base_detail(macro_source, mr_fat_g_day, "г/сут")
+            if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE
+            else {
+                "source": "calculated",
+                "source_text": macro_source,
+                "formula": "Жиры = целевая энергия × (жиры МР × 9 / энергия МР) / 9.",
+                "calculation": f"{_number(target_energy_kcal_day)} × ({_number(mr_fat_g_day)} × 9 / {_number(mr_energy_kcal_day)}) / 9 = {_number(target_fat_g_day)} г/сут.",
+            }
+        ),
+        "carbs_g": (
+            _base_detail(macro_source, mr_carb_g_day, "г/сут")
+            if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE
+            else {
+                "source": "calculated",
+                "source_text": macro_source,
+                "formula": "Углеводы = целевая энергия × (углеводы МР × 4 / энергия МР) / 4.",
+                "calculation": f"{_number(target_energy_kcal_day)} × ({_number(mr_carb_g_day)} × 4 / {_number(mr_energy_kcal_day)}) / 4 = {_number(target_carb_g_day)} г/сут.",
+            }
+        ),
+        "dietary_fiber_g": _base_detail(macro_source, macro_row.dietary_fibers_min_g, "г/сут"),
+        "water_g": _base_detail(macro_source, water_min_g_day, "г/сут"),
+        "mds_g": {
+            "source": "normative" if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE else "calculated",
+            "source_text": macro_source,
+            "formula": "Моно- и дисахариды = энергия × доля МР / 4.",
+            "calculation": f"{_number(target_energy_kcal_day)} × {_number(mds_min_pct_ev)}% / 4 = {_number(target_mds_g_day)} г/сут.",
+        },
+        "nlc_g": {
+            "source": "normative" if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE else "calculated",
+            "source_text": f"Таблица МР «Fat_Acids_Norms_MR»: НЖК — {_number(fat_acid_norms.get('nlc_g_ev', 0.0))}% энергетической ценности.",
+            "formula": "НЖК = энергия × доля МР / 9.",
+            "calculation": f"{_number(target_energy_kcal_day)} × {_number(fat_acid_norms.get('nlc_g_ev', 0.0))}% / 9 = {_number(target_nlc_g_day)} г/сут.",
+        },
+        "pufa_g": {
+            "source": "normative" if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE else "calculated",
+            "source_text": f"Таблица МР «Fat_Acids_Norms_MR»: ПНЖК — {_number(fat_acid_norms.get('pufa_g_ev', 0.0))}% энергетической ценности.",
+            "formula": "ПНЖК = энергия × доля МР / 9.",
+            "calculation": f"{_number(target_energy_kcal_day)} × {_number(fat_acid_norms.get('pufa_g_ev', 0.0))}% / 9 = {_number(target_pufa_g_day)} г/сут.",
+        },
+        "cholesterol_g": _base_detail("Таблица МР «Fat_Acids_Norms_MR».", payload["target_cholesterol_mg_day"], "мг/сут"),
+        "organic_acids_g": _base_detail("Таблица МР «Other_Nutrients_Norms_MR».", other_nutrient_norms.get("organic_acids_g", 0.0), "г/сут"),
+    }
+
+    vitamin_codes = {
+        "a_mg": "A_Vitamin (mg)", "beta_carotene_mg": "Beta_Carotene (mg)", "b1_mg": "B1_Vitamin (mg)",
+        "b2_mg": "B2_Vitamin (mg)", "pp_mg": "PP_Vitamin (mg)", "c_mg": "C_Vitamin (mg)",
+        "retinol_index": "Retinol_Index", "tocopherol_index": "Tocopherol_Index", "niacin_index": "Niacin_Index",
+    }
+    mineral_codes = {"na_mg": "Na", "k_mg": "K (mg)", "ca_mg": "Ca (mg)", "mg_mg": "Mg (mg)", "p_mg": "P (mg)", "fe_mg": "Fe (mg)"}
+    for code, name in vitamin_codes.items():
+        target_details[code] = _base_detail(
+            f"Таблица МР «Vitamins_Norms_MR»: {SEX_LABELS.get(profile.sex, profile.sex)}, {name}.",
+            vitamin_norms.get(name, 0.0), "мг/сут"
+        )
+    for code, name in mineral_codes.items():
+        value = payload["target_minerals_day"].get("na_mg") if code == "na_mg" else mineral_norms.get(name, 0.0)
+        target_details[code] = _base_detail(
+            f"Таблица МР «Minerals_Norms_MR»: {SEX_LABELS.get(profile.sex, profile.sex)}, {name}.", value, "мг/сут"
+        )
+
+    payload["energy_target_detail"] = energy_detail
+    payload["target_details"] = target_details
 
     recommended = None
     if goal and goal.goal_type == "lose_weight":
@@ -378,6 +519,13 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
     payload["recommended_energy_delta_kcal"] = recommended
 
     overrides = _apply_target_overrides(payload, goal)
+    for code, value in overrides.items():
+        payload["target_details"][code] = {
+            "source": "manual",
+            "source_text": "Значение задано пользователем вручную.",
+            "formula": None,
+            "calculation": f"Используется заданное значение: {_number(value)}.",
+        }
     payload["guidance_lists"] = _load_guidance_lists(goal)
     payload["manual_target_overrides"] = overrides
     payload["guidance_meta"] = {

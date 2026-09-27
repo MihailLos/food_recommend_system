@@ -814,6 +814,7 @@ class ProfileTargetsView(APIView):
             "title": request.data.get("title") or goal.title or "Пищевые ориентиры",
             "goal_type": ConsumerGoal.GOAL_MAINTAIN,
             "energy_delta_kcal": energy_delta_kcal if energy_delta_kcal not in ("", None) else 0,
+            "target_mode": request.data.get("target_mode") or ConsumerGoal.TARGET_MODE_CALCULATED,
             "preferences_replace_base": True,
             "is_active": True,
             **macro_fields,

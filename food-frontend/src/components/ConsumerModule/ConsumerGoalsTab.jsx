@@ -121,8 +121,9 @@ function formatUnit(unit, code = "") {
   return unit;
 }
 
-function buildSnapshot({ energyDeltaKcal, targetValues, coverageCodes, limitCodes, overrideCodes }) {
+function buildSnapshot({ targetMode, energyDeltaKcal, targetValues, coverageCodes, limitCodes, overrideCodes }) {
   return JSON.stringify({
+    targetMode,
     energyDeltaKcal: Number(energyDeltaKcal || 0),
     targetValues: Object.fromEntries(
       Object.entries(targetValues || {})
@@ -176,6 +177,71 @@ function flattenTargets(targets) {
 
 function InfoText({ children }) {
   return <div style={{ fontSize: 13, color: "#555", lineHeight: 1.55 }}>{children}</div>;
+}
+
+function TargetValueHelper({ code, detail, openCode, onToggle }) {
+  if (!detail) return null;
+
+  const isOpen = openCode === code;
+  const sourceLabel = {
+    normative: "Нормативное значение",
+    calculated: "Расчётное значение",
+    manual: "Задано вручную",
+  }[detail.source] || "Источник значения";
+
+  return (
+    <span style={{ position: "relative", display: "inline-flex", marginLeft: 6, verticalAlign: "middle" }}>
+      <button
+        type="button"
+        aria-label="Как получено значение"
+        aria-expanded={isOpen}
+        title="Как получено значение"
+        onClick={() => onToggle(isOpen ? "" : code)}
+        style={{
+          width: 19,
+          height: 19,
+          padding: 0,
+          border: "1px solid #6b7280",
+          borderRadius: "50%",
+          background: "#fff",
+          color: "#4b5563",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 700,
+          lineHeight: 1,
+        }}
+      >
+        ?
+      </button>
+      {isOpen && (
+        <span
+          role="tooltip"
+          style={{
+            position: "absolute",
+            zIndex: 10,
+            top: 25,
+            right: 0,
+            width: 330,
+            maxWidth: "calc(100vw - 48px)",
+            padding: 12,
+            border: "1px solid #d6dbe3",
+            borderRadius: 10,
+            background: "#fff",
+            boxShadow: "0 6px 20px rgba(0,0,0,0.14)",
+            color: "#27303b",
+            fontSize: 12,
+            fontWeight: 400,
+            lineHeight: 1.45,
+          }}
+        >
+          <strong>{sourceLabel}</strong>
+          <span style={{ display: "block", marginTop: 6 }}>{detail.source_text}</span>
+          {detail.formula && <span style={{ display: "block", marginTop: 6 }}>Формула: {detail.formula}</span>}
+          {detail.calculation && <span style={{ display: "block", marginTop: 6 }}>{detail.calculation}</span>}
+        </span>
+      )}
+    </span>
+  );
 }
 
 function SuggestionList({ title, codes, nutrientMeta, color, actionLabel, onApply }) {
@@ -309,6 +375,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [error, setError] = useState("");
   const [targets, setTargets] = useState(null);
   const [nutrients, setNutrients] = useState([]);
+  const [targetMode, setTargetMode] = useState("calculated");
   const [energyDeltaKcal, setEnergyDeltaKcal] = useState(0);
   const [targetValues, setTargetValues] = useState({});
   const [baseTargetValues, setBaseTargetValues] = useState({});
@@ -317,6 +384,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [overrideCodes, setOverrideCodes] = useState(new Set());
   const [dragTarget, setDragTarget] = useState("");
   const [openGuidanceHelper, setOpenGuidanceHelper] = useState("");
+  const [openTargetHelper, setOpenTargetHelper] = useState("");
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const bootstrappedRef = useRef(false);
   const saveTimerRef = useRef(null);
@@ -351,9 +419,12 @@ export default function ConsumerGoalsTab({ profileId }) {
   }, [availableNutrients, coverageCodes, limitCodes]);
 
   const displayedTargetEnergy = useMemo(() => {
+    if (targetMode === "normative") {
+      return round2(targets?.target_energy_kcal_day || 0);
+    }
     const tdee = Number(targets?.energy_calc?.tdee_kcal_day || 0);
     return round2(Math.max(0, tdee + Number(energyDeltaKcal || 0)));
-  }, [energyDeltaKcal, targets]);
+  }, [energyDeltaKcal, targetMode, targets]);
 
   const bmiValue = useMemo(() => {
     const value = Number(targets?.bmi);
@@ -391,6 +462,7 @@ export default function ConsumerGoalsTab({ profileId }) {
 
       setTargets(targetsData);
       setNutrients(normalizeList(nutrientsData));
+      setTargetMode(targetsData?.target_mode || "calculated");
       setEnergyDeltaKcal(Number(targetsData?.energy_delta_kcal || 0));
       setTargetValues(flattened);
       setBaseTargetValues(flattened);
@@ -399,6 +471,7 @@ export default function ConsumerGoalsTab({ profileId }) {
       const nextOverrideCodes = new Set(overrides);
       setOverrideCodes(nextOverrideCodes);
       lastSavedSnapshotRef.current = buildSnapshot({
+        targetMode: targetsData?.target_mode || "calculated",
         energyDeltaKcal: Number(targetsData?.energy_delta_kcal || 0),
         targetValues: flattened,
         coverageCodes: sanitizeGuidanceCodes(targetsData?.guidance_lists?.coverage_codes || []),
@@ -427,6 +500,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   useEffect(() => {
     bootstrappedRef.current = false;
     setTargets(null);
+    setTargetMode("calculated");
     setTargetValues({});
     setBaseTargetValues({});
     setCoverageCodes([]);
@@ -456,6 +530,7 @@ export default function ConsumerGoalsTab({ profileId }) {
 
       const payload = {
         title: "Пищевые ориентиры",
+        target_mode: targetMode,
         energy_delta_kcal: Number(energyDeltaKcal || 0),
         macros_pct: {
           protein_pct: null,
@@ -475,12 +550,14 @@ export default function ConsumerGoalsTab({ profileId }) {
       setTargets(updated);
       setTargetValues(flattened);
       setBaseTargetValues(flattened);
+      setTargetMode(updated?.target_mode || "calculated");
       setEnergyDeltaKcal(Number(updated?.energy_delta_kcal || 0));
       setCoverageCodes(sanitizeGuidanceCodes(updated?.guidance_lists?.coverage_codes || []));
       setLimitCodes(sanitizeGuidanceCodes(updated?.guidance_lists?.limit_codes || []));
       const nextOverrideCodes = new Set(Object.keys(updated?.manual_target_overrides || {}));
       setOverrideCodes(nextOverrideCodes);
       lastSavedSnapshotRef.current = buildSnapshot({
+        targetMode: updated?.target_mode || "calculated",
         energyDeltaKcal: Number(updated?.energy_delta_kcal || 0),
         targetValues: flattened,
         coverageCodes: sanitizeGuidanceCodes(updated?.guidance_lists?.coverage_codes || []),
@@ -494,11 +571,12 @@ export default function ConsumerGoalsTab({ profileId }) {
     } finally {
       setSaving(false);
     }
-  }, [coverageCodes, energyDeltaKcal, overrideCodes, profileIdNum, targetValues, limitCodes]);
+  }, [coverageCodes, energyDeltaKcal, overrideCodes, profileIdNum, targetMode, targetValues, limitCodes]);
 
   useEffect(() => {
     if (!bootstrappedRef.current) return undefined;
     const nextSnapshot = buildSnapshot({
+      targetMode,
       energyDeltaKcal,
       targetValues,
       coverageCodes,
@@ -520,7 +598,7 @@ export default function ConsumerGoalsTab({ profileId }) {
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [coverageCodes, energyDeltaKcal, limitCodes, overrideCodes, persist, targetValues]);
+  }, [coverageCodes, energyDeltaKcal, limitCodes, overrideCodes, persist, targetMode, targetValues]);
 
   const setTargetField = (code, value) => {
     const parsed = toNumberOrEmpty(value);
@@ -607,9 +685,10 @@ export default function ConsumerGoalsTab({ profileId }) {
             unit: formatUnit(nutrientMeta(code)?.unit || "", code),
             value: targetValues[code] ?? "",
             overridden: overrideCodes.has(code),
+            detail: targets?.target_details?.[code] || null,
           })),
       })),
-    [nutrientMap, nutrientMeta, overrideCodes, targetValues]
+    [nutrientMap, nutrientMeta, overrideCodes, targetValues, targets]
   );
 
   if (!profileIdNum) {
@@ -635,9 +714,35 @@ export default function ConsumerGoalsTab({ profileId }) {
 
         <InfoText>
           Раздел нужен для настройки значений, с которыми алгоритм сравнивает пищевой состав продуктов.
-          По умолчанию ориентиры формируются по данным профиля и нормативам. При необходимости можно изменить
-          отдельные значения вручную.
+          В расчётном режиме часть ориентиров персонализируется по данным профиля. В нормативном — используются
+          значения из подходящих таблиц МР. Отдельные значения можно изменить вручную в любом режиме.
         </InfoText>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[
+            ["calculated", "Расчётный", "Персонализирует энергию и зависимые ориентиры по параметрам профиля."],
+            ["normative", "Нормативный", "Берёт энергию и БЖУ из подходящей строки таблицы МР."],
+          ].map(([mode, label, hint]) => (
+            <button
+              key={mode}
+              type="button"
+              title={hint}
+              onClick={() => {
+                setTargetMode(mode);
+                setOpenTargetHelper("");
+              }}
+              style={{
+                ...btn,
+                borderColor: targetMode === mode ? "#2e7d32" : "#ddd",
+                background: targetMode === mode ? "#edf7ee" : "#fff",
+                color: targetMode === mode ? "#1f6a29" : "#333",
+                fontWeight: targetMode === mode ? 700 : 400,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {error && <div style={{ color: "crimson" }}>{error}</div>}
 
@@ -648,8 +753,9 @@ export default function ConsumerGoalsTab({ profileId }) {
             <InfoText>Суточные энерготраты по профилю с учетом физической активности.</InfoText>
           </div>
 
-          <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 600 }}>Изменение расчетного суточного расхода энергии</div>
+          {targetMode === "calculated" && (
+            <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, display: "grid", gap: 8 }}>
+              <div style={{ fontWeight: 600 }}>Изменение расчетного суточного расхода энергии</div>
             <div style={{ display: "grid", gridTemplateColumns: "56px minmax(0, 1fr)", gap: 8 }}>
               <div style={{ display: "flex", gap: 6 }}>
                 <button
@@ -708,12 +814,25 @@ export default function ConsumerGoalsTab({ profileId }) {
                 {bmiGuidance.energyHint}
               </div>
             )}
-          </div>
+            </div>
+          )}
 
           <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
             <div style={{ fontWeight: 600, marginBottom: 6 }}>Целевая энергия</div>
-            <div>{displayedTargetEnergy} ккал/сут</div>
-            <InfoText>Это итоговая энергия, от которой зависят целевые БЖУ и часть расчетов рекомендаций.</InfoText>
+            <div>
+              {displayedTargetEnergy} ккал/сут
+              <TargetValueHelper
+                code="energy_target"
+                detail={targets?.energy_target_detail}
+                openCode={openTargetHelper}
+                onToggle={setOpenTargetHelper}
+              />
+            </div>
+            <InfoText>
+              {targetMode === "normative"
+                ? "Энергия взята из строки МР, соответствующей полу, возрасту и группе труда."
+                : "Это итоговая энергия, от которой зависят целевые БЖУ и часть расчётов рекомендаций."}
+            </InfoText>
           </div>
         </div>
       </div>
@@ -739,7 +858,15 @@ export default function ConsumerGoalsTab({ profileId }) {
               <tbody>
                 {section.items.map((item) => (
                   <tr key={item.code}>
-                    <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3" }}>{item.label}</td>
+                    <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3" }}>
+                      {item.label}
+                      <TargetValueHelper
+                        code={item.code}
+                        detail={item.detail}
+                        openCode={openTargetHelper}
+                        onToggle={setOpenTargetHelper}
+                      />
+                    </td>
                     <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3", color: "#666" }}>{item.unit || "—"}</td>
                     <td style={{ padding: "8px 6px", borderBottom: "1px solid #f3f3f3" }}>
                       <input
@@ -756,7 +883,9 @@ export default function ConsumerGoalsTab({ profileId }) {
                           Вернуть базу
                         </button>
                       ) : (
-                        <span style={{ fontSize: 12, color: "#666" }}>Нормативное значение</span>
+                        <span style={{ fontSize: 12, color: "#666" }}>
+                          {item.detail?.source === "calculated" ? "Расчётное значение" : "Базовое значение"}
+                        </span>
                       )}
                     </td>
                   </tr>
