@@ -180,9 +180,45 @@ function InfoText({ children }) {
 }
 
 function TargetValueHelper({ code, detail, openCode, onToggle }) {
+  const anchorRef = useRef(null);
+  const [popupPosition, setPopupPosition] = useState(null);
+  const isOpen = Boolean(detail && openCode === code);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPopupPosition(null);
+      return undefined;
+    }
+
+    const updatePosition = () => {
+      const rect = anchorRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const viewportPadding = 12;
+      const width = Math.min(330, window.innerWidth - viewportPadding * 2);
+      const left = Math.min(
+        Math.max(viewportPadding, rect.left),
+        window.innerWidth - width - viewportPadding
+      );
+
+      setPopupPosition({
+        top: rect.bottom + 8,
+        left,
+        width,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [isOpen]);
+
   if (!detail) return null;
 
-  const isOpen = openCode === code;
   const sourceLabel = {
     normative: "Нормативное значение",
     calculated: "Расчётное значение",
@@ -190,7 +226,7 @@ function TargetValueHelper({ code, detail, openCode, onToggle }) {
   }[detail.source] || "Источник значения";
 
   return (
-    <span style={{ position: "relative", display: "inline-flex", marginLeft: 6, verticalAlign: "middle" }}>
+    <span ref={anchorRef} style={{ position: "relative", display: "inline-flex", marginLeft: 6, verticalAlign: "middle" }}>
       <button
         type="button"
         aria-label="Как получено значение"
@@ -213,16 +249,16 @@ function TargetValueHelper({ code, detail, openCode, onToggle }) {
       >
         ?
       </button>
-      {isOpen && (
+      {isOpen && popupPosition && (
         <span
           role="tooltip"
           style={{
-            position: "absolute",
+            position: "fixed",
             zIndex: 10,
-            top: 25,
-            right: 0,
-            width: 330,
-            maxWidth: "calc(100vw - 48px)",
+            top: popupPosition.top,
+            left: popupPosition.left,
+            width: popupPosition.width,
+            maxWidth: `calc(100vw - 24px)`,
             padding: 12,
             border: "1px solid #d6dbe3",
             borderRadius: 10,
