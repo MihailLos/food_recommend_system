@@ -21,6 +21,8 @@ DEFAULT_GUIDANCE_TITLE = "Пищевые ориентиры"
 
 DEFAULT_COVERAGE_CODES = [
     "protein_g",
+    "fats_g",
+    "carbs_g",
     "dietary_fiber_g",
     "ca_mg",
     "k_mg",
