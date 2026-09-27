@@ -624,13 +624,7 @@ class ConsumerProfileViewSet(viewsets.ModelViewSet):
                 "kfa": res.kfa,
                 "tdee_kcal_day": res.tdee_kcal_day,
                 "debug": {
-                    "age_band": f"{res.age_min}-{res.age_max}",
-                    "weight_nodes": {
-                        "left": res.w_left,
-                        "right": res.w_right,
-                        "bmr_left": res.bmr_left,
-                        "bmr_right": res.bmr_right,
-                    },
+                    "formula": res.bmr_formula_text,
                 },
             })
         except Exception as e:

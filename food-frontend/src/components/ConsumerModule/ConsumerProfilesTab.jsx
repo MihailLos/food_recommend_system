@@ -166,6 +166,12 @@ function BmiHelp({ weight, height, bmi }) {
 
 function BmrHelp({ profile }) {
   const debug = profile?.energy?.debug;
+  const isMale = profile?.sex === "male";
+  const formula =
+    debug?.formula ||
+    `ВОО = 9,99 × масса тела (кг) + 6,25 × рост (см) − 4,92 × возраст (лет) ${
+      isMale ? "+ 5" : "− 161"
+    }`;
 
   return (
     <>
@@ -175,30 +181,23 @@ function BmrHelp({ profile }) {
       </div>
 
       <div style={{ marginTop: 6 }}>
-        В системе используется табличный метод расчёта.
+        В системе ВОО рассчитывается по формуле.
       </div>
 
-      {debug && (
+      {profile && (
         <div style={{ marginTop: 6 }}>
           Параметры профиля:
           <br />
           Возраст: {profile.age_years} лет<br />
           Масса: {profile.weight_kg} кг<br />
-          Диапазон: {debug.age_band}
-        </div>
-      )}
-
-      {debug?.weight_nodes && (
-        <div style={{ marginTop: 6 }}>
-          Табличные значения:
-          <br />
-          {debug.weight_nodes.left} кг → {debug.weight_nodes.bmr_left} ккал<br />
-          {debug.weight_nodes.right} кг → {debug.weight_nodes.bmr_right} ккал
+          Рост: {profile.height_cm} см
         </div>
       )}
 
       <div style={{ marginTop: 6 }}>
-        Итог получен интерполяцией между ближайшими значениями.
+        Формула:
+        <br />
+        {formula}
       </div>
     </>
   );
