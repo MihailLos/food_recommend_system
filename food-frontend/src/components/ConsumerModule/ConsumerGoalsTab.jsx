@@ -111,7 +111,7 @@ function sanitizeGuidanceCodes(codes) {
   return (codes || []).filter((code) => !HIDDEN_NUTRIENT_CODES.has(code));
 }
 
-const MILLIGRAM_EQUIVALENT_CODES = new Set(["retinol_index", "tocopherol_index", "niacin_index"]);
+const MILLIGRAM_EQUIVALENT_CODES = new Set(["tocopherol_index", "niacin_index"]);
 
 function formatUnit(unit, code = "") {
   if (MILLIGRAM_EQUIVALENT_CODES.has(code)) return "миллиграммы (мг)";

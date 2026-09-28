@@ -498,10 +498,14 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
         "b2_mg": "B2_Vitamin (mg)", "pp_mg": "PP_Vitamin (mg)", "c_mg": "C_Vitamin (mg)",
         "retinol_index": "Retinol_Index", "tocopherol_index": "Tocopherol_Index", "niacin_index": "Niacin_Index",
     }
+    vitamin_labels = {
+        "retinol_index": "ретиноловый эквивалент",
+    }
     mineral_codes = {"na_mg": "Na", "k_mg": "K (mg)", "ca_mg": "Ca (mg)", "mg_mg": "Mg (mg)", "p_mg": "P (mg)", "fe_mg": "Fe (mg)"}
     for code, name in vitamin_codes.items():
         target_details[code] = _base_detail(
-            f"Таблица МР «Vitamins_Norms_MR»: {SEX_LABELS.get(profile.sex, profile.sex)}, {name}.",
+            f"Таблица МР «Vitamins_Norms_MR»: {SEX_LABELS.get(profile.sex, profile.sex)}, "
+            f"{vitamin_labels.get(code, name)}.",
             vitamin_norms.get(name, 0.0), "мг/сут"
         )
     for code, name in mineral_codes.items():

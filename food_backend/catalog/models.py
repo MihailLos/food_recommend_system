@@ -303,6 +303,7 @@ class Vitamins(models.Model):
     b2_vitamin_mg_field = models.FloatField(db_column='B2_Vitamin (mg)', blank=True, null=True)  # Field name made lowercase. Field renamed to remove unsuitable characters. Field renamed because it ended with '_'.
     pp_vitamin_mg_field = models.FloatField(db_column='PP_Vitamin (mg)', blank=True, null=True)  # Field name made lowercase. Field renamed to remove unsuitable characters. Field renamed because it ended with '_'.
     c_vitamin_mg_field = models.FloatField(db_column='C_Vitamin (mg)', blank=True, null=True)  # Field name made lowercase. Field renamed to remove unsuitable characters. Field renamed because it ended with '_'.
+    # Историческое имя столбца сохранено, но после миграции 0006 значение хранится в мг.
     retinol_index = models.FloatField(db_column='Retinol_Index', blank=True, null=True)  # Field name made lowercase.
     tocopherol_index = models.FloatField(db_column='Tocopherol_Index', blank=True, null=True)  # Field name made lowercase.
     niacin_index = models.FloatField(db_column='Niacin_Index', blank=True, null=True)  # Field name made lowercase.
