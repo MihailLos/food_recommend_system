@@ -113,6 +113,7 @@ export async function fetchRecommendations({
   sourceMode = "reference_only",
   comparisonMode = "",
   scoringMode = "sum",
+  cateringMode = "include",
   cartId = null,
   limit = 50,
   q = "",
@@ -132,6 +133,7 @@ export async function fetchRecommendations({
     source_mode: String(sourceMode || "reference_only"),
     comparison_mode: String(comparisonMode || ""),
     scoring_mode: String(scoringMode || "sum"),
+    catering_mode: String(cateringMode || "include"),
     limit,
   };
 

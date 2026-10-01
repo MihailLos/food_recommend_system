@@ -51,6 +51,15 @@ RECOMMENDATION_SCORING_MODE_CHOICES = {
     RECOMMENDATION_SCORING_MODE_BALANCED,
 }
 
+CATERING_MODE_INCLUDE = "include"
+CATERING_MODE_EXCLUDE = "exclude"
+CATERING_MODE_ONLY = "only"
+CATERING_MODE_CHOICES = {
+    CATERING_MODE_INCLUDE,
+    CATERING_MODE_EXCLUDE,
+    CATERING_MODE_ONLY,
+}
+
 CLASS_META = {
     "best_fit": {"label": "Наиболее подходит", "color": "green", "rank": 3},
     "limited_fit": {"label": "Подходит с ограничениями", "color": "yellow", "rank": 2},
@@ -116,11 +125,25 @@ def _product_id(product: Any) -> Optional[int]:
         return None
 
 
+def _is_catering_product(product: Any) -> bool:
+    value = _product_get(product, "is_complex", "isComplex")
+    return str(value).strip().lower() in {"1", "true", "yes"}
+
+
+def _filter_catering_products(products: List[Any], catering_mode: str) -> List[Any]:
+    if catering_mode == CATERING_MODE_EXCLUDE:
+        return [product for product in products if not _is_catering_product(product)]
+    if catering_mode == CATERING_MODE_ONLY:
+        return [product for product in products if _is_catering_product(product)]
+    return products
+
+
 def _product_payload(product: Any) -> dict:
     if _is_mapping(product):
         return {
             "id": _product_get(product, "id"),
             "name": _product_get(product, "name"),
+            "is_complex": _is_catering_product(product),
             "subtype_id": _product_get(product, "subtype_id", "subtypeId"),
             "subtype_name": _product_get(product, "subtype_name", "subtypeName"),
             "type_id": _product_get(product, "type_id", "typeId"),
@@ -132,6 +155,7 @@ def _product_payload(product: Any) -> dict:
     return {
         "id": product.id,
         "name": product.name,
+        "is_complex": _is_catering_product(product),
         "subtype_id": getattr(subtype, "id", None),
         "subtype_name": getattr(subtype, "name", None),
         "type_id": getattr(product_type, "id", None),
@@ -976,6 +1000,7 @@ def recommend(
     subtype_id: Optional[int] = None,
     comparison_mode: str = COMPARISON_MODE_SUBGROUP,
     scoring_mode: str = RECOMMENDATION_SCORING_MODE_SUM,
+    catering_mode: str = CATERING_MODE_INCLUDE,
     local_products: Optional[List[dict]] = None,
     selected_product_ids: Optional[List[int]] = None,
 ) -> dict:
@@ -987,6 +1012,8 @@ def recommend(
         comparison_mode = COMPARISON_MODE_SUBGROUP
     if scoring_mode not in RECOMMENDATION_SCORING_MODE_CHOICES:
         scoring_mode = RECOMMENDATION_SCORING_MODE_SUM
+    if catering_mode not in CATERING_MODE_CHOICES:
+        catering_mode = CATERING_MODE_INCLUDE
 
     profile = get_object_or_404(ConsumerProfile, pk=profile_id)
     goal = ensure_active_goal(profile)
@@ -1006,7 +1033,10 @@ def recommend(
 
     server_product_map: Dict[int, FoodProducts] = {}
     if local_products:
-        universe_products = [item for item in local_products if isinstance(item, dict)]
+        universe_products = _filter_catering_products(
+            [item for item in local_products if isinstance(item, dict)],
+            catering_mode,
+        )
         selected_ids = {
             int(pid) for pid in (selected_product_ids or [])
             if pid is not None
@@ -1058,6 +1088,7 @@ def recommend(
             base_qs.select_related("subtype", "subtype__product_type")
             .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")[:2000]
         )
+        products = _filter_catering_products(products, catering_mode)
 
         if comparison_mode in {COMPARISON_MODE_GLOBAL, COMPARISON_MODE_SELECTED}:
             universe_products = products
@@ -1067,6 +1098,7 @@ def recommend(
                 .select_related("subtype", "subtype__product_type")
                 .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")
             )
+
         elif comparison_mode == COMPARISON_MODE_SUBGROUP and subtype_id:
             universe_products = list(
                 FoodProducts.objects.filter(subtype_id=subtype_id)
@@ -1079,6 +1111,8 @@ def recommend(
                 .select_related("subtype", "subtype__product_type")
                 .prefetch_related("macros", "minerals", "vitamins", "other_nutrients", "fat_acids")[:5000]
             )
+
+    universe_products = _filter_catering_products(universe_products, catering_mode)
 
     pools = _fetch_comparison_pools(
         universe_products=universe_products,
@@ -1293,6 +1327,7 @@ def recommend(
         "mode": mode,
         "comparison_mode": comparison_mode,
         "recommendation_scoring_mode": scoring_mode,
+        "catering_mode": catering_mode,
         "has_coverage_dimension": has_coverage_dimension,
         "has_limit_dimension": has_limit_dimension,
         "count": min(len(items), limit),

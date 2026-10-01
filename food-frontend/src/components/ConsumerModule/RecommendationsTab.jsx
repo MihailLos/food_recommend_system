@@ -94,6 +94,12 @@ const sourceModeOptions = [
   { value: "reference_plus_retail", label: "Эталонный справочник + мои магазинные продукты" },
 ];
 
+const cateringModeOptions = [
+  { value: "include", label: "Включать продукцию общественного питания" },
+  { value: "exclude", label: "Исключить продукцию общественного питания" },
+  { value: "only", label: "Только продукция общественного питания" },
+];
+
 const scoringModeOptions = [
   {
     value: "sum",
@@ -345,6 +351,7 @@ const recommendationPayloadFields = [
   "typeName",
   "subtypeId",
   "subtypeName",
+  "isComplex",
   "isChildAllowed",
   "allergens",
   "protein_g",
@@ -717,6 +724,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const [sourceMode, setSourceMode] = useState("reference_only");
   const [comparisonMode, setComparisonMode] = useState("");
   const [scoringMode, setScoringMode] = useState("sum");
+  const [cateringMode, setCateringMode] = useState("include");
   const [typeId, setTypeId] = useState("");
   const [subtypeId, setSubtypeId] = useState("");
   const [selectionTypeId, setSelectionTypeId] = useState("");
@@ -1075,6 +1083,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         sourceMode,
         comparisonMode,
         scoringMode,
+        cateringMode,
         typeId: typeId || null,
         subtypeId: subtypeId || null,
         limit: 500,
@@ -1095,7 +1104,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     } finally {
       setLoading(false);
     }
-  }, [comparisonMode, ensureLocalCatalog, profileIdNum, scoringMode, selectedProducts, sourceMode, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
+  }, [cateringMode, comparisonMode, ensureLocalCatalog, profileIdNum, scoringMode, selectedProducts, sourceMode, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -1506,6 +1515,48 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
 
           </div>
 
+          {sourceMode !== "retail_only" && (
+            <div
+              style={{
+                border: "1px solid #d9e2ee",
+                borderRadius: 10,
+                padding: 12,
+                background: "#f8fbff",
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: "#1f3b67" }}>Продукция общественного питания</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {cateringModeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      setCateringMode(option.value);
+                      setPayload(null);
+                      setSelectedItem(null);
+                    }}
+                    style={{
+                      ...btn,
+                      borderColor: cateringMode === option.value ? "#2e7d32" : "#d6dbe3",
+                      background: cateringMode === option.value ? "#edf7ee" : "#fff",
+                      color: cateringMode === option.value ? "#1f6a29" : "#333",
+                      fontWeight: cateringMode === option.value ? 700 : 400,
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.5, color: "#34495e" }}>
+                {sourceMode === "reference_plus_retail"
+                  ? "Настройка применяется только к эталонному справочнику. Магазинные продукты остаются в множестве сравнения."
+                  : "Настройка применяется ко всему множеству эталонных продуктов до расчёта квартильных баллов."}
+              </div>
+            </div>
+          )}
+
           {comparisonMode && (
             <div
               style={{
@@ -1768,7 +1819,18 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
                   return (
                     <tr key={item.product?.id}>
                       <td style={{ padding: "10px 8px", borderBottom: "1px solid #f3f3f3", minWidth: 260 }}>
-                        <div style={{ fontWeight: 600 }}>{item.product?.name}</div>
+                        <div style={{ fontWeight: 600 }}>
+                          {item.product?.name}
+                          {item.product?.is_complex && (
+                            <span
+                              title="Продукт общественного питания"
+                              aria-label="Продукт общественного питания"
+                              style={{ marginLeft: 6, cursor: "help" }}
+                            >
+                              🍽️
+                            </span>
+                          )}
+                        </div>
                         <div style={{ color: "#666", fontSize: 12 }}>
                           {item.product?.subtype_name || item.product?.type_name || "Без подгруппы"}
                         </div>
