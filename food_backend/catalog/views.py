@@ -981,6 +981,7 @@ class RecommendationsView(APIView):
         type_id = payload.get("type_id")
         subtype_id = payload.get("subtype_id")
         comparison_mode = str(payload.get("comparison_mode") or "subgroup").strip()
+        scoring_mode = str(payload.get("scoring_mode") or "sum").strip()
         local_products = payload.get("local_products") or None
         selected_product_ids = payload.get("selected_product_ids") or None
         source_mode = str(payload.get("source_mode") or "reference_only").strip()
@@ -1022,6 +1023,7 @@ class RecommendationsView(APIView):
             type_id=int(type_id) if type_id else None,
             subtype_id=int(subtype_id) if subtype_id else None,
             comparison_mode=comparison_mode,
+            scoring_mode=scoring_mode,
             local_products=local_products,
             selected_product_ids=selected_product_ids,
         )

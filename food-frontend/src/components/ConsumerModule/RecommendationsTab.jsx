@@ -94,6 +94,19 @@ const sourceModeOptions = [
   { value: "reference_plus_retail", label: "Эталонный справочник + мои магазинные продукты" },
 ];
 
+const scoringModeOptions = [
+  {
+    value: "sum",
+    label: "Суммарный",
+    description: "Итоговая оценка равна сумме баллов пищевых веществ покрытия за вычетом суммы баллов лимитной нагрузки. Чем больше веществ выбрано в группе, тем сильнее она влияет на результат.",
+  },
+  {
+    value: "balanced",
+    label: "Сбалансированный",
+    description: "Итоговая оценка рассчитывается как средний балл веществ покрытия за вычетом среднего балла лимитной нагрузки. Обе группы имеют одинаковый общий вес независимо от числа выбранных веществ.",
+  },
+];
+
 function normalizeList(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.results)) return data.results;
@@ -128,6 +141,10 @@ function formatNutrientUnit(unit) {
 function ScorePercentHelper({ score, isOpen, onToggle }) {
   const coverage = score?.coverage_sum;
   const limit = score?.limit_sum;
+  const coverageAverage = score?.coverage_average;
+  const limitAverage = score?.limit_average;
+  const scoringMode = score?.recommendation_scoring_mode || "sum";
+  const isBalanced = scoringMode === "balanced";
   const balance = score?.priority_raw;
   const rank = score?.balance_rank;
   const rankStart = score?.balance_rank_start;
@@ -136,6 +153,12 @@ function ScorePercentHelper({ score, isOpen, onToggle }) {
   const percent = score?.score_percent_100;
   const hasCoverage = typeof coverage === "number" && Number.isFinite(coverage);
   const hasLimit = typeof limit === "number" && Number.isFinite(limit);
+  const hasCoverageAverage = typeof coverageAverage === "number" && Number.isFinite(coverageAverage);
+  const hasLimitAverage = typeof limitAverage === "number" && Number.isFinite(limitAverage);
+  const coverageBalanceValue = isBalanced ? coverageAverage : coverage;
+  const limitBalanceValue = isBalanced ? limitAverage : limit;
+  const hasCoverageBalanceValue = isBalanced ? hasCoverageAverage : hasCoverage;
+  const hasLimitBalanceValue = isBalanced ? hasLimitAverage : hasLimit;
   const hasCalculation = [balance, rank, rankStart, rankEnd, count, percent]
     .every((value) => typeof value === "number" && Number.isFinite(value));
 
@@ -172,9 +195,11 @@ function ScorePercentHelper({ score, isOpen, onToggle }) {
           <div style={{ fontWeight: 700, color: "#1f3b67", marginBottom: 4 }}>Как получена оценка {fmtPercent(percent)}</div>
           {hasCoverage && <div>Покрытие: {fmt(coverage, 2)}.</div>}
           {hasLimit && <div>Лимитная нагрузка: {fmt(limit, 2)}.</div>}
-          {hasCoverage && hasLimit && <div>Баланс: {fmt(coverage, 2)} − {fmt(limit, 2)} = {fmt(balance, 2)}.</div>}
-          {hasCoverage && !hasLimit && <div>Баланс: {fmt(coverage, 2)}.</div>}
-          {!hasCoverage && hasLimit && <div>Баланс: −{fmt(limit, 2)} = {fmt(balance, 2)}.</div>}
+          {isBalanced && hasCoverageAverage && <div>Средний балл покрытия: {fmt(coverageAverage, 2)}.</div>}
+          {isBalanced && hasLimitAverage && <div>Средний балл лимитной нагрузки: {fmt(limitAverage, 2)}.</div>}
+          {hasCoverageBalanceValue && hasLimitBalanceValue && <div>Баланс: {fmt(coverageBalanceValue, 2)} − {fmt(limitBalanceValue, 2)} = {fmt(balance, 2)}.</div>}
+          {hasCoverageBalanceValue && !hasLimitBalanceValue && <div>Баланс: {fmt(coverageBalanceValue, 2)}.</div>}
+          {!hasCoverageBalanceValue && hasLimitBalanceValue && <div>Баланс: −{fmt(limitBalanceValue, 2)} = {fmt(balance, 2)}.</div>}
           <div>Среди {count} продуктов этот баланс занял {placeText}; средний ранг — {fmt(rank, 1)}.</div>
           {count > 1
             ? <div>Итог: ({fmt(rank, 1)} − 1) / ({count} − 1) × 100 = {fmtPercent(percent)}.</div>
@@ -691,6 +716,7 @@ function DetailsModal({ item, onClose }) {
 export default function RecommendationsTab({ profileId, catalogScope }) {
   const [sourceMode, setSourceMode] = useState("reference_only");
   const [comparisonMode, setComparisonMode] = useState("");
+  const [scoringMode, setScoringMode] = useState("sum");
   const [typeId, setTypeId] = useState("");
   const [subtypeId, setSubtypeId] = useState("");
   const [selectionTypeId, setSelectionTypeId] = useState("");
@@ -1048,6 +1074,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
         mode: "catalog",
         sourceMode,
         comparisonMode,
+        scoringMode,
         typeId: typeId || null,
         subtypeId: subtypeId || null,
         limit: 500,
@@ -1068,7 +1095,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
     } finally {
       setLoading(false);
     }
-  }, [comparisonMode, ensureLocalCatalog, profileIdNum, selectedProducts, sourceMode, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
+  }, [comparisonMode, ensureLocalCatalog, profileIdNum, scoringMode, selectedProducts, sourceMode, startProgress, stopProgress, subtypeId, typeId, validateFilters]);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -1478,6 +1505,46 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
             )}
 
           </div>
+
+          {comparisonMode && (
+            <div
+              style={{
+                border: "1px solid #d9e2ee",
+                borderRadius: 10,
+                padding: 12,
+                background: "#f8fbff",
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: "#1f3b67" }}>Режим расчёта рекомендации</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {scoringModeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      setScoringMode(option.value);
+                      setPayload(null);
+                      setSelectedItem(null);
+                    }}
+                    style={{
+                      ...btn,
+                      borderColor: scoringMode === option.value ? "#2e7d32" : "#d6dbe3",
+                      background: scoringMode === option.value ? "#edf7ee" : "#fff",
+                      color: scoringMode === option.value ? "#1f6a29" : "#333",
+                      fontWeight: scoringMode === option.value ? 700 : 400,
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.5, color: "#34495e" }}>
+                {scoringModeOptions.find((option) => option.value === scoringMode)?.description}
+              </div>
+            </div>
+          )}
 
           <div style={{ border: "1px solid #d9e2ee", borderRadius: 10, padding: "10px 12px", background: "#f8fbff", color: "#34495e", fontSize: 13, lineHeight: 1.55 }}>
             <div style={{ fontWeight: 700, color: "#1f3b67", marginBottom: 4 }}>Минимальный размер множества сравнения</div>

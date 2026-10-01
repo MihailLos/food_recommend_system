@@ -44,6 +44,13 @@ COMPARISON_MODE_CHOICES = {
     COMPARISON_MODE_SELECTED,
 }
 
+RECOMMENDATION_SCORING_MODE_SUM = "sum"
+RECOMMENDATION_SCORING_MODE_BALANCED = "balanced"
+RECOMMENDATION_SCORING_MODE_CHOICES = {
+    RECOMMENDATION_SCORING_MODE_SUM,
+    RECOMMENDATION_SCORING_MODE_BALANCED,
+}
+
 CLASS_META = {
     "best_fit": {"label": "Наиболее подходит", "color": "green", "rank": 3},
     "limited_fit": {"label": "Подходит с ограничениями", "color": "yellow", "rank": 2},
@@ -712,6 +719,7 @@ def _build_group_metrics(
     prefs_by_code: Dict[str, GoalNutrientPreference],
     goal_type: Optional[str],
     comparison_mode: str,
+    scoring_mode: str,
     server_product_map: Optional[Dict[int, FoodProducts]] = None,
 ) -> Dict[int, dict]:
     has_coverage_dimension = any(role == "preferred" for role in active_roles.values())
@@ -767,6 +775,8 @@ def _build_group_metrics(
     score_map: Dict[int, float] = {}
     coverage_sum_map: Dict[int, float] = {}
     limit_sum_map: Dict[int, float] = {}
+    coverage_average_map: Dict[int, float] = {}
+    limit_average_map: Dict[int, float] = {}
     category_rule_map: Dict[int, Optional[dict]] = {}
     category_adjustment_map: Dict[int, float] = {}
 
@@ -818,14 +828,27 @@ def _build_group_metrics(
         category_adjustment_map[product_id] = category_adjustment
         if coverage_signal_count > 0:
             coverage_sum_map[product_id] = coverage_sum
+            coverage_average_map[product_id] = coverage_sum / coverage_signal_count
         if limit_signal_count > 0:
             limit_sum_map[product_id] = limit_sum
+            limit_average_map[product_id] = limit_sum / limit_signal_count
+
+        coverage_score = (
+            coverage_average_map.get(product_id, 0.0)
+            if scoring_mode == RECOMMENDATION_SCORING_MODE_BALANCED
+            else coverage_sum
+        )
+        limit_score = (
+            limit_average_map.get(product_id, 0.0)
+            if scoring_mode == RECOMMENDATION_SCORING_MODE_BALANCED
+            else limit_sum
+        )
         if has_coverage_dimension and has_limit_dimension:
-            priority_raw = coverage_sum - limit_sum + category_adjustment
+            priority_raw = coverage_score - limit_score + category_adjustment
         elif has_coverage_dimension:
-            priority_raw = coverage_sum + category_adjustment
+            priority_raw = coverage_score + category_adjustment
         elif has_limit_dimension:
-            priority_raw = -limit_sum + category_adjustment
+            priority_raw = -limit_score + category_adjustment
         else:
             priority_raw = category_adjustment
         score_map[product_id] = priority_raw
@@ -842,6 +865,20 @@ def _build_group_metrics(
     score_percentile = _build_rank_percent_map(score_map, invert=False)
     score_rank_details = _build_rank_details_map(score_map)
 
+    if scoring_mode == RECOMMENDATION_SCORING_MODE_BALANCED:
+        if has_coverage_dimension and has_limit_dimension:
+            score_formula = "priority_raw = coverage_average - limit_average + category_adjustment"
+        elif has_coverage_dimension:
+            score_formula = "priority_raw = coverage_average + category_adjustment"
+        else:
+            score_formula = "priority_raw = -limit_average + category_adjustment"
+    elif has_coverage_dimension and has_limit_dimension:
+        score_formula = "priority_raw = coverage_sum - limit_sum + category_adjustment"
+    elif has_coverage_dimension:
+        score_formula = "priority_raw = coverage_sum + category_adjustment"
+    else:
+        score_formula = "priority_raw = -limit_sum + category_adjustment"
+
     return {
         product_id: {
             "signals": signal_map.get(product_id, []),
@@ -853,6 +890,10 @@ def _build_group_metrics(
             "category_adjustment": category_adjustment_map.get(product_id, 0.0),
             "coverage_sum": coverage_sum_map.get(product_id),
             "limit_sum": limit_sum_map.get(product_id),
+            "coverage_average": coverage_average_map.get(product_id),
+            "limit_average": limit_average_map.get(product_id),
+            "recommendation_scoring_mode": scoring_mode,
+            "score_formula": score_formula,
             "coverage_percent_100": coverage_percentile.get(product_id),
             "limit_percent_100": limit_percentile.get(product_id),
             "priority_raw": score_map.get(product_id),
@@ -934,6 +975,7 @@ def recommend(
     type_id: Optional[int] = None,
     subtype_id: Optional[int] = None,
     comparison_mode: str = COMPARISON_MODE_SUBGROUP,
+    scoring_mode: str = RECOMMENDATION_SCORING_MODE_SUM,
     local_products: Optional[List[dict]] = None,
     selected_product_ids: Optional[List[int]] = None,
 ) -> dict:
@@ -943,6 +985,8 @@ def recommend(
     del cart_id
     if comparison_mode not in COMPARISON_MODE_CHOICES:
         comparison_mode = COMPARISON_MODE_SUBGROUP
+    if scoring_mode not in RECOMMENDATION_SCORING_MODE_CHOICES:
+        scoring_mode = RECOMMENDATION_SCORING_MODE_SUM
 
     profile = get_object_or_404(ConsumerProfile, pk=profile_id)
     goal = ensure_active_goal(profile)
@@ -1053,6 +1097,7 @@ def recommend(
             prefs_by_code=prefs_by_code,
             goal_type=getattr(goal, "goal_type", None),
             comparison_mode=comparison_mode,
+            scoring_mode=scoring_mode,
             server_product_map=server_product_map,
         )
 
@@ -1124,6 +1169,9 @@ def recommend(
             "comparison_count": comparison_count,
             "coverage_sum": coverage_sum,
             "limit_sum": limit_sum,
+            "coverage_average": metrics.get("coverage_average"),
+            "limit_average": metrics.get("limit_average"),
+            "recommendation_scoring_mode": scoring_mode,
             "coverage_percent_100": coverage_percent_100,
             "limit_percent_100": limit_percent_100,
             "coverage_level": coverage_level,
@@ -1189,6 +1237,8 @@ def recommend(
                 "score_breakdown": {
                     "coverage_sum": coverage_sum,
                     "limit_sum": limit_sum,
+                    "coverage_average": metrics.get("coverage_average"),
+                    "limit_average": metrics.get("limit_average"),
                     "coverage_percent_100": coverage_percent_100,
                     "limit_percent_100": limit_percent_100,
                     "coverage_level": coverage_level,
@@ -1207,11 +1257,7 @@ def recommend(
                     "coverage_formula": "coverage_sum = sum(quartile_score for preferred nutrients)",
                     "limit_formula": "limit_sum = sum(quartile_score for restricted nutrients)",
                     "category_formula": "category_adjustment = +/- scope_weight, where subtype=2 and type=1",
-                    "score_formula": (
-                        "priority_raw = coverage_sum - limit_sum + category_adjustment"
-                        if has_coverage_dimension and has_limit_dimension
-                        else ("priority_raw = coverage_sum + category_adjustment" if has_coverage_dimension else "priority_raw = -limit_sum + category_adjustment")
-                    ),
+                    "score_formula": metrics.get("score_formula"),
                     "class_formula": "best_fit if priority_raw >= Qua3; limited_fit if Qua1 < priority_raw < Qua3; not_recommended if priority_raw <= Qua1",
                 },
                 "dimensions": {
@@ -1246,6 +1292,7 @@ def recommend(
         "goal_id": goal.id if goal else None,
         "mode": mode,
         "comparison_mode": comparison_mode,
+        "recommendation_scoring_mode": scoring_mode,
         "has_coverage_dimension": has_coverage_dimension,
         "has_limit_dimension": has_limit_dimension,
         "count": min(len(items), limit),
