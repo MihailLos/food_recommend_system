@@ -780,6 +780,32 @@ export default function ConsumerGoalsTab({ profileId }) {
           ))}
         </div>
 
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid #dce5ef",
+            background: "#f7f9fc",
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: "#334",
+          }}
+        >
+          {targetMode === "calculated" ? (
+            <>
+              <strong>Расчётный режим.</strong> Целевая потребность в энергии рассчитывается по параметрам профиля
+              пользователя. Нормы пищевых веществ, зависящие от целевой суточной потребности в энергии,
+              пересчитываются от полученного значения и отмечаются как «Расчётное значение».
+            </>
+          ) : (
+            <>
+              <strong>Нормативный режим.</strong> Суточные нормы энергии и пищевых веществ берутся из МР
+              2.3.1.0253-21 Роспотребнадзора для пола, возраста и группы физической активности.
+              Индивидуальный расчёт не применяется.
+            </>
+          )}
+        </div>
+
         {error && <div style={{ color: "crimson" }}>{error}</div>}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>

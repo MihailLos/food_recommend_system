@@ -703,6 +703,7 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
   const [availableNutrientsLoading, setAvailableNutrientsLoading] = useState(false);
   const [nutrientsDictionary, setNutrientsDictionary] = useState([]);
   const [guidanceLists, setGuidanceLists] = useState({ coverageCodes: [], limitCodes: [] });
+  const [targetMode, setTargetMode] = useState(null);
   const [sortBy, setSortBy] = useState("score_percent_100");
   const [sortDirection, setSortDirection] = useState("desc");
   const [types, setTypes] = useState([]);
@@ -825,11 +826,13 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
           coverageCodes: normalizeList(targetsData?.guidance_lists?.coverage_codes || []),
           limitCodes: normalizeList(targetsData?.guidance_lists?.limit_codes || []),
         });
+        setTargetMode(targetsData?.target_mode || null);
         setNutrientsDictionary(normalizeList(nutrientsData));
       })
       .catch(() => {
         if (!cancelled) {
           setGuidanceLists({ coverageCodes: [], limitCodes: [] });
+          setTargetMode(null);
           setNutrientsDictionary([]);
         }
       });
@@ -1160,7 +1163,24 @@ export default function RecommendationsTab({ profileId, catalogScope }) {
       )}
 
       <div style={{ ...box, padding: 16, display: "grid", gap: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 18 }}>Рекомендации</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 700, fontSize: 18 }}>Рекомендации</div>
+          {targetMode && (
+            <div
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: "1px solid #b7d7ba",
+                background: "#edf7ee",
+                color: "#1f6a29",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              Суточные нормы: {targetMode === "calculated" ? "расчётный режим" : "нормативный режим"}
+            </div>
+          )}
+        </div>
         <div style={{ color: "#555", lineHeight: 1.55 }}>
           С учетом выбранных пищевых ориентиров вам будут предложены лучшие продукты (блюда) среди выбранной базы сравнения
           по совокупности показателей пищевой ценности.
