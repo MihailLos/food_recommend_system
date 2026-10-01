@@ -38,6 +38,18 @@ const dragItemStyles = {
 
 const HIDDEN_NUTRIENT_CODES = new Set(["starch_g", "ash_g", "alcohol_pct"]);
 
+const NUTRIENT_GROUPS = [
+  { code: "macros", label: "Макронутриенты" },
+  { code: "minerals", label: "Минеральные вещества" },
+  { code: "vitamins", label: "Витамины" },
+  { code: "fat_acids", label: "Жирные кислоты" },
+  { code: "other_nutrients", label: "Другие пищевые вещества" },
+];
+
+function nutrientGroupLabel(sourceGroup) {
+  return NUTRIENT_GROUPS.find((group) => group.code === sourceGroup)?.label || "Прочее";
+}
+
 const TARGET_SECTIONS = [
   {
     key: "macronutrients",
@@ -421,6 +433,7 @@ export default function ConsumerGoalsTab({ profileId }) {
   const [dragTarget, setDragTarget] = useState("");
   const [openGuidanceHelper, setOpenGuidanceHelper] = useState("");
   const [openTargetHelper, setOpenTargetHelper] = useState("");
+  const [nutrientSearch, setNutrientSearch] = useState("");
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const bootstrappedRef = useRef(false);
   const saveTimerRef = useRef(null);
@@ -453,6 +466,28 @@ export default function ConsumerGoalsTab({ profileId }) {
     const assigned = new Set([...coverageCodes, ...limitCodes]);
     return availableNutrients.filter((item) => !assigned.has(item.code));
   }, [availableNutrients, coverageCodes, limitCodes]);
+
+  const groupedUnassignedNutrients = useMemo(() => {
+    const search = nutrientSearch.trim().toLowerCase();
+    const filtered = unassignedNutrients.filter((item) => {
+      if (!search) return true;
+      return [item.ru_name, item.code]
+        .some((value) => String(value || "").toLowerCase().includes(search));
+    });
+    const byGroup = new Map();
+    for (const item of filtered) {
+      const sourceGroup = item.source_group || "other";
+      if (!byGroup.has(sourceGroup)) byGroup.set(sourceGroup, []);
+      byGroup.get(sourceGroup).push(item);
+    }
+    const knownGroups = NUTRIENT_GROUPS
+      .filter((group) => byGroup.has(group.code))
+      .map((group) => ({ ...group, items: byGroup.get(group.code) }));
+    const otherGroups = [...byGroup.entries()]
+      .filter(([sourceGroup]) => !NUTRIENT_GROUPS.some((group) => group.code === sourceGroup))
+      .map(([sourceGroup, items]) => ({ code: sourceGroup, label: nutrientGroupLabel(sourceGroup), items }));
+    return [...knownGroups, ...otherGroups];
+  }, [nutrientSearch, unassignedNutrients]);
 
   const displayedTargetEnergy = useMemo(() => {
     if (targetMode === "normative") {
@@ -1133,7 +1168,15 @@ export default function ConsumerGoalsTab({ profileId }) {
                 Вернуть вещества по умолчанию
               </button>
             </div>
-            {unassignedNutrients.length > 5 && (
+            <input
+              type="search"
+              style={input}
+              value={nutrientSearch}
+              onChange={(event) => setNutrientSearch(event.target.value)}
+              placeholder="Поиск по названию пищевого вещества"
+              aria-label="Поиск пищевых веществ"
+            />
+            {groupedUnassignedNutrients.length > 1 && (
               <div
                 style={{
                   display: "flex",
@@ -1149,55 +1192,64 @@ export default function ConsumerGoalsTab({ profileId }) {
                   fontWeight: 600,
                 }}
               >
-                <span>Список ниже прокручивается</span>
+                <span>Список ниже сгруппирован и прокручивается</span>
                 <span aria-hidden="true">↓</span>
               </div>
             )}
             {unassignedNutrients.length === 0 ? (
               <div style={{ fontSize: 12, color: "#666" }}>Все доступные вещества уже распределены по спискам.</div>
+            ) : groupedUnassignedNutrients.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#666" }}>По вашему запросу ничего не найдено.</div>
             ) : (
-              <div style={{ display: "grid", gap: 8 }}>
-                {unassignedNutrients.map((item) => (
-                  <div
-                    key={item.code}
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData("text/plain", item.code);
-                    }}
-                    onDragEnd={() => setDragTarget("")}
-                    style={dragItemStyles}
-                  >
-                    <div style={{ fontWeight: 600 }}>{item.ru_name}</div>
-                    <div style={{ fontSize: 11, color: "#666" }}>{formatUnit(item.unit, item.code)}</div>
-                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                      <button
-                        type="button"
-                        style={{
-                          ...btn,
-                          padding: "6px 10px",
-                          borderColor: "#2e7d32",
-                          color: "#2e7d32",
-                          fontWeight: 700,
-                        }}
-                        onClick={() => assignCode(item.code, "coverage")}
-                        title="Добавить в пищевые вещества покрытия"
-                      >
-                        + Покрытие
-                      </button>
-                      <button
-                        type="button"
-                        style={{
-                          ...btn,
-                          padding: "6px 10px",
-                          borderColor: "#c62828",
-                          color: "#c62828",
-                          fontWeight: 700,
-                        }}
-                        onClick={() => assignCode(item.code, "limit")}
-                        title="Добавить в пищевые вещества лимитной нагрузки"
-                      >
-                        + Лимит
-                      </button>
+              <div style={{ display: "grid", gap: 14 }}>
+                {groupedUnassignedNutrients.map((group) => (
+                  <div key={group.code} style={{ display: "grid", gap: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#34495e" }}>{group.label}</div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {group.items.map((item) => (
+                        <div
+                          key={item.code}
+                          draggable
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData("text/plain", item.code);
+                          }}
+                          onDragEnd={() => setDragTarget("")}
+                          style={dragItemStyles}
+                        >
+                          <div style={{ fontWeight: 600 }}>{item.ru_name}</div>
+                          <div style={{ fontSize: 11, color: "#666" }}>{formatUnit(item.unit, item.code)}</div>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                            <button
+                              type="button"
+                              style={{
+                                ...btn,
+                                padding: "6px 10px",
+                                borderColor: "#2e7d32",
+                                color: "#2e7d32",
+                                fontWeight: 700,
+                              }}
+                              onClick={() => assignCode(item.code, "coverage")}
+                              title="Добавить в пищевые вещества покрытия"
+                            >
+                              + Покрытие
+                            </button>
+                            <button
+                              type="button"
+                              style={{
+                                ...btn,
+                                padding: "6px 10px",
+                                borderColor: "#c62828",
+                                color: "#c62828",
+                                fontWeight: 700,
+                              }}
+                              onClick={() => assignCode(item.code, "limit")}
+                              title="Добавить в пищевые вещества лимитной нагрузки"
+                            >
+                              + Лимит
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
