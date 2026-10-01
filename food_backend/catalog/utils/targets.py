@@ -25,9 +25,33 @@ TARGET_MODE_LABELS = {
 }
 SEX_LABELS = {"male": "мужчина", "female": "женщина"}
 
+# МР 2.3.1.0253-21, таблицы 10 и 15. Доли одинаковы для мужчин и женщин.
+MR_MACRO_PERCENTAGES_BY_KFA = {
+    1.4: {"protein": 14.0, "fat": 30.0, "carb": 56.0},
+    1.6: {"protein": 13.0, "fat": 30.0, "carb": 57.0},
+    1.9: {"protein": 12.5, "fat": 30.0, "carb": 57.5},
+    2.2: {"protein": 12.0, "fat": 30.0, "carb": 58.0},
+    1.7: {"protein": 14.0, "fat": 30.0, "carb": 56.0},
+}
+
 
 def _number(value: float) -> str:
     return f"{float(value):.2f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
+def _mr_macro_percentages(kfa: float) -> Dict[str, float]:
+    """Возвращает нормативные доли БЖУ из МР для выбранного КФА."""
+    for norm_kfa, percentages in MR_MACRO_PERCENTAGES_BY_KFA.items():
+        if abs(float(kfa) - norm_kfa) < 0.01:
+            return percentages
+    raise ValueError(f"No MR macro percentages for KFA={kfa}")
+
+
+def _macro_percentages_source_text(kfa: float) -> str:
+    return (
+        "МР 2.3.1.0253-21, таблицы 10 и 15: "
+        f"оптимальные доли макронутриентов для КФА {_number(kfa)}."
+    )
 
 
 def _macro_source_text(profile: ConsumerProfile, macro_row: MacronutrientsNormsMR) -> str:
@@ -256,9 +280,10 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
     mr_protein_g_day = float(macro_row.protein_g)
     mr_fat_g_day = float(macro_row.fats_g)
     mr_carb_g_day = float(macro_row.carbs_g)
-    mr_protein_pct = (mr_protein_g_day * 4.0 / mr_energy_kcal_day * 100.0) if mr_energy_kcal_day > 0 else 0.0
-    mr_fat_pct = (mr_fat_g_day * 9.0 / mr_energy_kcal_day * 100.0) if mr_energy_kcal_day > 0 else 0.0
-    mr_carb_pct = (mr_carb_g_day * 4.0 / mr_energy_kcal_day * 100.0) if mr_energy_kcal_day > 0 else 0.0
+    mr_macro_percentages = _mr_macro_percentages(res.kfa)
+    mr_protein_pct = mr_macro_percentages["protein"]
+    mr_fat_pct = mr_macro_percentages["fat"]
+    mr_carb_pct = mr_macro_percentages["carb"]
 
     energy_delta_kcal = (
         float(goal.energy_delta_kcal)
@@ -421,6 +446,7 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
     }
 
     macro_source = _macro_source_text(profile, macro_row)
+    macro_percentages_source = _macro_percentages_source_text(res.kfa)
     energy_detail = (
         _base_detail(macro_source, mr_energy_kcal_day, "ккал/сут")
         if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE
@@ -444,9 +470,13 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
             if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE
             else {
                 "source": "calculated",
-                "source_text": macro_source,
-                "formula": "Белки = целевая энергия × (белки МР × 4 / энергия МР) / 4.",
-                "calculation": f"{_number(target_energy_kcal_day)} × ({_number(mr_protein_g_day)} × 4 / {_number(mr_energy_kcal_day)}) / 4 = {_number(target_protein_g_day)} г/сут.",
+                "source_text": (
+                    "Доля белков задана пользователем."
+                    if manual
+                    else macro_percentages_source
+                ),
+                "formula": "Белки = целевая энергия × доля белков МР / 4.",
+                "calculation": f"{_number(target_energy_kcal_day)} × {_number(protein_pct)}% / 4 = {_number(target_protein_g_day)} г/сут.",
             }
         ),
         "fats_g": (
@@ -454,9 +484,13 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
             if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE
             else {
                 "source": "calculated",
-                "source_text": macro_source,
-                "formula": "Жиры = целевая энергия × (жиры МР × 9 / энергия МР) / 9.",
-                "calculation": f"{_number(target_energy_kcal_day)} × ({_number(mr_fat_g_day)} × 9 / {_number(mr_energy_kcal_day)}) / 9 = {_number(target_fat_g_day)} г/сут.",
+                "source_text": (
+                    "Доля жиров задана пользователем."
+                    if manual
+                    else macro_percentages_source
+                ),
+                "formula": "Жиры = целевая энергия × доля жиров МР / 9.",
+                "calculation": f"{_number(target_energy_kcal_day)} × {_number(fat_pct)}% / 9 = {_number(target_fat_g_day)} г/сут.",
             }
         ),
         "carbs_g": (
@@ -464,9 +498,13 @@ def compute_targets_for_profile(profile: ConsumerProfile) -> Dict:
             if target_mode == ConsumerGoal.TARGET_MODE_NORMATIVE
             else {
                 "source": "calculated",
-                "source_text": macro_source,
-                "formula": "Углеводы = целевая энергия × (углеводы МР × 4 / энергия МР) / 4.",
-                "calculation": f"{_number(target_energy_kcal_day)} × ({_number(mr_carb_g_day)} × 4 / {_number(mr_energy_kcal_day)}) / 4 = {_number(target_carb_g_day)} г/сут.",
+                "source_text": (
+                    "Доля углеводов задана пользователем."
+                    if manual
+                    else macro_percentages_source
+                ),
+                "formula": "Углеводы = целевая энергия × доля углеводов МР / 4.",
+                "calculation": f"{_number(target_energy_kcal_day)} × {_number(carb_pct)}% / 4 = {_number(target_carb_g_day)} г/сут.",
             }
         ),
         "dietary_fiber_g": _base_detail(macro_source, macro_row.dietary_fibers_min_g, "г/сут"),
