@@ -1,0 +1,50 @@
+{
+  "dataset": "initial-potato-carrot-2026-v1",
+  "provenance": "Word перепроверен при загрузке. Excel отсутствует по прежним путям; значения перенесены из ранее проверенных в этой задаче файлов и уточнений пользователя. Неизвестные сведения не восстановлены.",
+  "sources": {
+    "old": "Расчёты.docx; SHA256 cd14c07fdd96962e9938295ebab65b725c6d9803e24fc61d6f0989eb323c1a65",
+    "potato": "Скорректированные таблицы картофель (1).xlsx; проверенная выписка из задачи, оригинал при загрузке недоступен",
+    "carrot": "Скорректированные таблицы морковь.xlsx; проверенная выписка из задачи, оригинал при загрузке недоступен"
+  },
+  "batches": [
+    {"code":"POT-KEM-01","product":"Картофель","product_sort":"Галла","origin":"Кемеровская область","retailer_location":"Корниловка, Топкинский муниципальный округ, Кемеровская область","harvest_date":"2026-09-05","notes":"В старой таблица-1.docx указана дата приобретения 10.09.2026; в Excel указан сбор урожая 05.09.2026. Дата покупки пока не заполнена. Пользователь подтвердил использование того же сырья для варки и запекания; условия хранения неизвестны."},
+    {"code":"POT-NSK-01","product":"Картофель","origin":"Новосибирск","retailer_location":"Лента","purchase_date":"2026-10-08","notes":"Пользователь подтвердил использование того же сырья для варки и запекания. Сорт, условия хранения и дата запекания неизвестны."},
+    {"code":"POT-ROS-01","product":"Картофель","origin":"Ростов","retailer_location":"Лента","purchase_date":"2026-10-08","notes":"Происхождение записано в источнике как Ростов, без уточнения региона. Пользователь подтвердил использование того же сырья для варки и запекания. Условия хранения неизвестны."},
+    {"code":"CAR-OMS-01","product":"Морковь","origin":"Омская область","retailer_location":"Ярче","purchase_date":"2026-11-05"},
+    {"code":"CAR-ALT-01","product":"Морковь","origin":"Алтайский край","retailer_location":"Мария-Ра","purchase_date":"2026-11-05"}
+  ],
+  "experiments": [
+    {"code":"POT-KEM-BOIL","batch":"POT-KEM-01","processing":"Варка картофеля очищенного","initial_product_weight_g":"198.90","final_product_weight_g":"186.34","gross_product_weight_g":"234.50","temperature_celsius":"94","processing_time_min":"42","water_size_g":"1058","oil_size_g":"0","experiment_date":"2026-10-09","using_machinery":"Плита","source":"таблица-1.docx","notes":"Исходная масса — очищенное сырьё из пояснения в документе. В таблице опыта ошибочно указана масса до очистки. Отбор навесок и процедура стекания не описаны. Точка измерения температуры и начало отсчёта времени неизвестны."},
+    {"code":"POT-NSK-BOIL","batch":"POT-NSK-01","processing":"Варка картофеля очищенного","initial_product_weight_g":"362.34","final_product_weight_g":"352.05","temperature_celsius":"93","processing_time_min":"45","experiment_date":"2026-10-09","using_machinery":"Плита","source":"таблица-2.docx","notes":"Масса до очистки противоречива: 460,07 / 466,07 г; оставлена NULL. Вода записана как 1,166 г: единицы требуют уточнения, water_size_g=NULL. Знак '-' для масла не заменён предположением о нуле. Форма перед варкой и подготовка лабораторной пробы в исходнике смешаны; приняты целые очищенные клубни согласно пояснениям задачи."},
+    {"code":"POT-ROS-BOIL","batch":"POT-ROS-01","processing":"Варка картофеля очищенного","initial_product_weight_g":"511.30","final_product_weight_g":"524.00","gross_product_weight_g":"615.75","temperature_celsius":"97.2","processing_time_min":"45","experiment_date":"2026-10-09","using_machinery":"Плита","source":"таблица-3.docx","notes":"Вода записана как 1,803 г: единицы требуют уточнения, water_size_g=NULL. Отбор навесок и стекание не описаны. Масса после варки больше исходной; данные сохранены без обрезания. Точка измерения температуры и начало отсчёта времени неизвестны."},
+    {"code":"POT-KEM-FOIL","batch":"POT-KEM-01","processing":"Запекание целого очищенного картофеля","foil_used":true,"initial_product_weight_g":"107.10","final_product_weight_g":"89.77","gross_product_weight_g":"129.60","temperature_celsius":"180","processing_time_min":"25","source":"potato"},
+    {"code":"POT-KEM-OPEN","batch":"POT-KEM-01","processing":"Запекание целого очищенного картофеля","foil_used":false,"initial_product_weight_g":"126.28","final_product_weight_g":"91.52","gross_product_weight_g":"147.69","temperature_celsius":"180","processing_time_min":"25","source":"potato"},
+    {"code":"POT-NSK-FOIL","batch":"POT-NSK-01","processing":"Запекание целого очищенного картофеля","foil_used":true,"initial_product_weight_g":"236.68","final_product_weight_g":"212.38","gross_product_weight_g":"291.10","temperature_celsius":"180","processing_time_min":"30","source":"potato"},
+    {"code":"POT-NSK-OPEN","batch":"POT-NSK-01","processing":"Запекание целого очищенного картофеля","foil_used":false,"initial_product_weight_g":"201.92","final_product_weight_g":"156.90","gross_product_weight_g":"250.87","temperature_celsius":"180","processing_time_min":"30","source":"potato"},
+    {"code":"POT-ROS-FOIL","batch":"POT-ROS-01","processing":"Запекание целого очищенного картофеля","foil_used":true,"initial_product_weight_g":"333.03","final_product_weight_g":"277.71","gross_product_weight_g":"472.27","temperature_celsius":"200","processing_time_min":"30","source":"potato"},
+    {"code":"POT-ROS-OPEN","batch":"POT-ROS-01","processing":"Запекание целого очищенного картофеля","foil_used":false,"initial_product_weight_g":"326.74","final_product_weight_g":"243.48","gross_product_weight_g":"419.44","temperature_celsius":"200","processing_time_min":"30","source":"potato"},
+    {"code":"CAR-OMS-BOIL","batch":"CAR-OMS-01","processing":"Варка моркови очищенной","initial_product_weight_g":"166.65","final_product_weight_g":"157.57","gross_product_weight_g":"202.10","temperature_celsius":"76","processing_time_min":"40","water_size_g":"1000","using_machinery":"Плита","temperature_measurement_point":"Вода при закладке","time_start_event":"Закладка в нагретую воду","source":"carrot","notes":"Пользователь подтвердил отдельные порции для сырого анализа и варки. Сырая порция: до очистки 213 г, после 173,8 г; эти массы не использованы в выходе варки. Температура не характеризует весь режим нагрева. Дата опыта неизвестна."},
+    {"code":"CAR-ALT-BOIL","batch":"CAR-ALT-01","processing":"Варка моркови очищенной","initial_product_weight_g":"183.13","final_product_weight_g":"178.51","gross_product_weight_g":"214.23","temperature_celsius":"77","processing_time_min":"40","water_size_g":"1000","using_machinery":"Плита","temperature_measurement_point":"Вода при закладке","time_start_event":"Закладка в нагретую воду","source":"carrot","notes":"Пользователь подтвердил отдельные порции для сырого анализа и варки. Сырая порция: до очистки 235,80 г, после 203,93 г; эти массы не использованы в выходе варки. Температура не характеризует весь режим нагрева. Дата опыта неизвестна."}
+  ],
+  "reported_measurements": {
+    "POT-KEM-RAW": ["13.6","13.4","13.2"],
+    "POT-NSK-RAW": ["14.4","15.4","14.4"],
+    "POT-ROS-RAW": ["18.2","17.6","17.3"],
+    "POT-KEM-BOIL-S": ["14.1","15","14.2"],
+    "POT-NSK-BOIL-S": ["14.6","15","14.4"],
+    "POT-ROS-BOIL-S": ["18.8","18.4","18.4"]
+  },
+  "mass_columns": ["container_code","m0_g","m1_g","m2_g","reported_dry_matter_pct"],
+  "mass_measurements": {
+    "POT-KEM-OPEN-S": [["У 34341","43.90","48.96","44.93","20.35"],["У 34355","44.51","49.51","45.52","20.2"],["У 34340","44.72","49.72","45.77","21"]],
+    "POT-KEM-FOIL-S": [["У 34332","44.95","49.99","45.77","16.26"],["У 34346","45.29","50.29","46.15","17.2"],["312","38.42","43.45","39.36","18.68"]],
+    "POT-NSK-OPEN-S": [["324","33.59","38.59","34.64","21"],["У 34345","39.93","44.91","41.00","21.48"],["У 34361","44.59","49.63","45.68","21.62"]],
+    "POT-NSK-FOIL-S": [["У 34595","43.88","48.87","44.73","17.03"],["У 34356","38.21","43.25","39.10","17.65"],["314","38.34","43.39","39.16","16.23"]],
+    "POT-ROS-OPEN-S": [["322","38.18","43.18","39.522","26.84"],["У 34353","42.72","47.74","44.04","26.29"],["302","38.68","43.73","39.96","25.34"]],
+    "POT-ROS-FOIL-S": [["У 34389","43.72","48.70","44.72","20.08"],["У 34312","44.40","49.38","45.42","20.48"],["304","32.84","37.82","33.86","20.48"]],
+    "CAR-OMS-RAW": [["У-34340","44.71","49.73","45.27","11.15"],["У-34353","42.76","47.78","43.18","8.36"],["У-34341","44.43","49.49","45.00","11.26"]],
+    "CAR-OMS-BOIL-S": [["У-34389","44.00","49.01","44.52","10.37"],["У-34312","44.48","49.49","44.97","9.78"],["У-34595","43.58","48.56","44.07","9.83"]],
+    "CAR-ALT-RAW": [["У-34355","44.71","49.71","45.26","11"],["314","38.59","43.60","39.13","10.77"],["У-34345","40.01","45.00","40.55","10.82"]],
+    "CAR-ALT-BOIL-S": [["322","37.97","42.98","38.53","11.17"],["313","38.58","43.56","39.11","10.64"],["У-34361","44.52","49.50","45.06","10.84"]]
+  }
+}
