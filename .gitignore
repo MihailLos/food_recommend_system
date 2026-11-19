@@ -40,3 +40,6 @@ food-frontend/yarn-error.log*
 # Common
 # =========================
 *.log
+
+# Local database schema snapshots (not application source)
+backups/
