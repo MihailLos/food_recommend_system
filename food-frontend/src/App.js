@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ProductsPage from "./components/ProductsPage";
 import ConsumerPage from "./components/ConsumerModule/ConsumerPage";
+import TechnologyPage from "./components/TechnologyModule/TechnologyPage";
 import AuthPage from "./components/Auth/AuthPage";
 import { fetchCsrfCookie, fetchCurrentUser, logoutUser } from "./api/auth";
 import "./styles/header.css";
@@ -29,7 +30,7 @@ const tabBtn = (active) => ({
 });
 
 export default function App() {
-  const [tab, setTab] = useState("auth"); // catalog | consumer | auth
+  const [tab, setTab] = useState("auth");
   const [authLoading, setAuthLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [guestCatalogScope, setGuestCatalogScope] = useState(() => ensureGuestCatalogScope());
@@ -103,6 +104,11 @@ export default function App() {
             <button style={tabBtn(tab === "consumer")} onClick={() => setTab("consumer")}>
               🧑‍⚕️ Модуль потребителя
             </button>
+            {user.is_staff && (
+              <button style={tabBtn(tab === "technology")} onClick={() => setTab("technology")}>
+                Технологический модуль
+              </button>
+            )}
             <button style={tabBtn(false)} onClick={handleLogout}>
               Выйти ({user.username})
             </button>
@@ -117,6 +123,7 @@ export default function App() {
       {/* Контент */}
       {tab === "catalog" && <ProductsPage catalogScope={catalogScope} isAuthenticated={Boolean(user)} user={user} />}
       {tab === "consumer" && user && <ConsumerPage user={user} catalogScope={catalogScope} />}
+      {tab === "technology" && user?.is_staff && <TechnologyPage />}
       {tab === "auth" && !user && <AuthPage onLogin={handleLogin} />}
     </div>
   );
