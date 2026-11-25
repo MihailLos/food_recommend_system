@@ -17,7 +17,7 @@ test("staff can open the technological module", async () => {
   fetchCurrentUser.mockResolvedValue({ id: 1, username: "technologist", is_staff: true });
   render(<App />);
 
-  fireEvent.click(await screen.findByRole("button", { name: "Технологический модуль" }));
+  fireEvent.click(await screen.findByRole("button", { name: "🧪 Технологический модуль" }));
   expect(screen.getByText("Форма технолога")).toBeInTheDocument();
 });
 
@@ -27,5 +27,5 @@ test("consumer accounts do not get the technological module tab", async () => {
   render(<App />);
 
   expect(await screen.findByText("Профили потребителя")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Технологический модуль" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Технологический модуль/ })).not.toBeInTheDocument();
 });

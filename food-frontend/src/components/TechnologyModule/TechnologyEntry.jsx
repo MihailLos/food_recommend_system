@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { createTechnologyRecord } from "../../api/technology";
 import { BatchPicker, CatalogPicker, Choice, Field, SelectOptions } from "./TechnologyFields";
-import { formatNumber } from "./technologyFormat";
+import { formatCalculatedPercent, formatNumber } from "./technologyFormat";
 
 const stages = [
   { id: "raw", name: "Без обработки" },
@@ -100,7 +100,7 @@ function Weighings({ rows, onEdit, onAdd, onRemove, errors }) {
               ))}
             </div>
             <div className="technology-actions">
-              {results[index] && <span>Сухой остаток {formatNumber(results[index].residue)} г · {formatNumber(results[index].percent)} %</span>}
+              {results[index] && <span>Сухой остаток {formatNumber(results[index].residue)} г · {formatCalculatedPercent(results[index].percent, " %")}</span>}
               {rows.length > 1 && <button type="button" onClick={() => onRemove(row.id)}
                 aria-label={`Убрать параллель ${index + 1}`}>Убрать</button>}
             </div>
@@ -112,7 +112,7 @@ function Weighings({ rows, onEdit, onAdd, onRemove, errors }) {
         {errors["analysis.parallels"] && <p className="technology-error">{errors["analysis.parallels"]}</p>}
       </div>
       {results.every(Boolean) && (
-        <p>Средний сухой остаток {formatNumber(average("residue"))} г · Сухие вещества {formatNumber(average("percent"))} %</p>
+        <p>Средний сухой остаток {formatNumber(average("residue"))} г · Сухие вещества {formatCalculatedPercent(average("percent"), " %")}</p>
       )}
     </div>
   );
@@ -206,7 +206,7 @@ export default function TechnologyEntry({ options, onSaved }) {
         </div>
         {batchMode === "new" ? (
           <>
-            <div className="technology-grid">
+            <div className="technology-grid technology-new-batch">
               <Field {...props("batch.product_name", "Название продукта", { required: true, maxLength: 120 })} />
               <Field {...props("batch.sort_name", "Сорт (разновидность продукта)", { hint: "Необязательно" })} />
               <Field {...props("batch.source_place", "Происхождение (страна и/или город происхождения)", { hint: "Необязательно" })} />

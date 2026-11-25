@@ -106,7 +106,7 @@ export default function App() {
             </button>
             {user.is_staff && (
               <button style={tabBtn(tab === "technology")} onClick={() => setTab("technology")}>
-                Технологический модуль
+                🧪 Технологический модуль
               </button>
             )}
             <button style={tabBtn(false)} onClick={handleLogout}>

@@ -163,6 +163,18 @@
   white-space: nowrap;
 }
 
+@media (width > 650px) {
+  .technology-new-batch > .technology-field {
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+  }
+
+  .technology-new-batch > .technology-field > label { grid-row: 1; }
+  .technology-new-batch > .technology-field > small:not(.technology-error) { grid-row: 2; }
+  .technology-new-batch > .technology-field > input { grid-row: 3; }
+  .technology-new-batch > .technology-field > .technology-error { grid-row: 4; }
+}
+
 @media (max-width: 650px) {
   .technology-grid { grid-template-columns: 1fr; }
   .technology-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }

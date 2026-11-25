@@ -20,11 +20,11 @@ const batch = {
 const record = {
   id: 6, batch, weight_g: "173.8", preprocessing: [], heating: [],
   analyses: [{
-    id: 9, result_mode: "weighings", final_dry_matter_pct: "11",
-    avg_dry_residue_g: "0.55", parallel_count: 2,
+    id: 9, result_mode: "weighings", final_dry_matter_pct: "11.126",
+    avg_dry_residue_g: "0.5563", parallel_count: 2,
     parallels: [
       { parallel_number: 1, m0_g: "10", m1_g: "15", m2_g: "10.5", dry_residue_g: "0.5", dry_matter_pct: "10" },
-      { parallel_number: 2, m0_g: "11", m1_g: "16", m2_g: "11.6", dry_residue_g: "0.6", dry_matter_pct: "12" },
+      { parallel_number: 2, m0_g: "11", m1_g: "16", m2_g: "11.6126", dry_residue_g: "0.6126", dry_matter_pct: "12.252" },
     ],
   }],
 };
@@ -64,14 +64,15 @@ test("focuses the missing field, then saves a new weighing-based record and open
   fireEvent.click(screen.getByRole("button", { name: /Добавить параллель/ }));
   [
     ["Параллель 1", "10", "15", "10,5"],
-    ["Параллель 2", "11", "16", "11,6"],
+    ["Параллель 2", "11", "16", "11,6126"],
   ].forEach(([name, m0, m1, m2]) => {
     const row = within(screen.getByRole("group", { name }));
     fill("Тара m₀, г", m0, row);
     fill("Бюкс с навеской до сушки m₁, г", m1, row);
     fill("Бюкс с навеской после сушки m₂, г", m2, row);
   });
-  expect(screen.getByText("Средний сухой остаток 0,55 г · Сухие вещества 11 %")).toBeInTheDocument();
+  expect(screen.getByText("Сухой остаток 0,5 г · 10,00 %")).toBeInTheDocument();
+  expect(screen.getByText("Средний сухой остаток 0,5563 г · Сухие вещества 11,13 %")).toBeInTheDocument();
 
   fireEvent.click(save);
   expect(await screen.findByText("Результаты сохранены.")).toBeInTheDocument();
@@ -82,21 +83,24 @@ test("focuses the missing field, then saves a new weighing-based record and open
       stage: "raw", result_mode: "weighings",
       parallels: [
         { m0_g: "10", m1_g: "15", m2_g: "10.5" },
-        { m0_g: "11", m1_g: "16", m2_g: "11.6" },
+        { m0_g: "11", m1_g: "16", m2_g: "11.6126" },
       ],
     },
   });
   const open = await screen.findByRole("button", { name: /Открыть запись/ });
+  expect(screen.getByRole("cell", { name: "11,13" })).toBeInTheDocument();
   expect(screen.queryByRole("columnheader", { name: /Порция/ })).not.toBeInTheDocument();
   fireEvent.click(open);
   fireEvent.click(await screen.findByRole("button", { name: "Лабораторные данные" }));
-  expect(screen.getByText("11 %")).toBeInTheDocument();
-  expect(screen.getByText("Взвешивания по параллелям (2)")).toBeInTheDocument();
+  expect(screen.getByText("11,13 %")).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Взвешивания по параллелям (2)"));
+  expect(screen.getByRole("cell", { name: "12,25" })).toBeInTheDocument();
 });
 
 test("adds a result to the selected batch using only the reported percentage", async () => {
   render(<TechnologyPage />);
   fireEvent.click(screen.getByLabelText("Существующая партия"));
+  expect(screen.getByRole("searchbox", { name: "Поиск партии по ее номеру или по названию продукта" })).toBeInTheDocument();
   await screen.findByRole("option", { name: /Морковь/ });
   fill("Партия", "3");
   fill("Масса до обработки, г", "180");

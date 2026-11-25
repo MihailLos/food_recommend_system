@@ -88,7 +88,7 @@ export function BatchPicker({ value, onChange, error }) {
   return (
     <>
       <div className="technology-grid">
-        <Field name="batchSearch" label="Название продукта или номер партии" type="search"
+        <Field name="batchSearch" label="Поиск партии по ее номеру или по названию продукта" type="search"
           value={search} onChange={(event) => setSearch(event.target.value)} />
         <Field name="batch_id" label="Партия" required error={error} value={value?.id ?? ""}
           onChange={(event) => onChange(matches.items.find(({ id }) => String(id) === event.target.value) ?? null)}

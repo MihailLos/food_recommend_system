@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { getTechnologyRecord, listTechnologyRecords } from "../../api/technology";
-import { formatNumber, formatUnit } from "./technologyFormat";
+import { formatCalculatedPercent, formatNumber, formatUnit } from "./technologyFormat";
 
 function Facts({ items }) {
   return (
@@ -28,9 +28,10 @@ function WeighingTable({ parallels }) {
           {parallels.map((parallel) => (
             <tr key={parallel.parallel_number}>
               <th scope="row">{parallel.parallel_number}</th>
-              {["m0_g", "m1_g", "m2_g", "dry_residue_g", "dry_matter_pct"].map((key) =>
+              {["m0_g", "m1_g", "m2_g", "dry_residue_g"].map((key) =>
                 <td key={key} className="technology-number">{formatNumber(parallel[key])}</td>,
               )}
+              <td className="technology-number">{formatCalculatedPercent(parallel.dry_matter_pct)}</td>
             </tr>
           ))}
         </tbody>
@@ -56,7 +57,7 @@ function AnalysisResults({ record }) {
         <div className="technology-stack" key={analysis.id}>
           {analyses.length > 1 && <h4>Анализ {index + 1}</h4>}
           <p>{analysis.result_mode === "reported" ? "Готовый процент лаборатории" : "Среднее по параллелям"} ·{" "}
-            <strong>{formatUnit(analysis.final_dry_matter_pct, "%")}</strong>
+            <strong>{formatAnalysisPercent(analysis, " %")}</strong>
           </p>
           {analysis.result_mode === "weighings" && (
             <>
@@ -130,6 +131,11 @@ function allHeating(record) {
   return [...record.heating, ...record.preprocessing.flatMap((part) => part.heating)];
 }
 
+function formatAnalysisPercent({ final_dry_matter_pct: value, result_mode: mode }, suffix = "") {
+  if (mode === "weighings") return formatCalculatedPercent(value, suffix);
+  return value == null ? "—" : formatNumber(value) + suffix;
+}
+
 function RecordRow({ record, onOpen }) {
   const { batch, preprocessing } = record;
   const heating = allHeating(record);
@@ -162,7 +168,7 @@ function RecordRow({ record, onOpen }) {
       <td className="technology-number">
         {stagesWithAnalyses.length ? stagesWithAnalyses.map(({ key, stage, analyses }) => (
           <div key={key}>
-            {analyses.map(({ final_dry_matter_pct }) => formatNumber(final_dry_matter_pct)).join(" / ")}
+            {analyses.map((analysis) => formatAnalysisPercent(analysis)).join(" / ")}
             {labelAnalysisStage && <small>{stage}</small>}
           </div>
         )) : "—"}
