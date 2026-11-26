@@ -63,6 +63,11 @@ class ProcessedProductData(models.Model):
     )
     added_water_g = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
     added_oil_g = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    oil_used = models.BooleanField(null=True, blank=True)
+
+    @property
+    def uses_oil(self):
+        return self.oil_used is True or (self.added_oil_g or 0) > 0
 
     class Meta:
         db_table = "Processed_Product_Data"
@@ -75,6 +80,9 @@ class ProcessedProductData(models.Model):
             models.CheckConstraint(condition=Q(weight_g__gte=0), name="tech_processed_mass_nonnegative"),
             models.CheckConstraint(condition=Q(added_water_g__gte=0), name="tech_water_nonnegative"),
             models.CheckConstraint(condition=Q(added_oil_g__gte=0), name="tech_oil_nonnegative"),
+            models.CheckConstraint(
+                condition=~Q(oil_used=False, added_oil_g__gt=0), name="tech_oil_use_consistent",
+            ),
         ]
 
 
@@ -88,10 +96,16 @@ class ExperimentData(models.Model):
     processed_product = models.ForeignKey(ProcessedProductData, on_delete=models.PROTECT, null=True, blank=True)
     result_mode = models.CharField(max_length=10, choices=ResultMode.choices)
     reported_dry_matter_pct = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    reported_dry_matter_without_oil_pct = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
 
     class Meta:
         db_table = "Experiment_Data"
         constraints = [
+            models.CheckConstraint(
+                condition=Q(reported_dry_matter_without_oil_pct__isnull=True)
+                | Q(processed_product__isnull=False, reported_dry_matter_without_oil_pct__range=(0, 100)),
+                name="tech_reported_oil_free_result",
+            ),
             models.CheckConstraint(
                 condition=Q(unprocessed_product__isnull=False, preprocessed_product__isnull=True, processed_product__isnull=True)
                 | Q(unprocessed_product__isnull=True, preprocessed_product__isnull=False, processed_product__isnull=True)
@@ -113,6 +127,11 @@ class ExperimentParallel(models.Model):
     m0_g = models.DecimalField(max_digits=14, decimal_places=6)
     m1_g = models.DecimalField(max_digits=14, decimal_places=6)
     m2_g = models.DecimalField(max_digits=14, decimal_places=6)
+    m0_without_oil_g = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    m1_without_oil_g = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    m2_without_oil_g = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    reported_dry_residue_without_oil_g = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    reported_dry_matter_without_oil_pct = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
     dry_residue_g = models.GeneratedField(
         expression=F("m2_g") - F("m0_g"),
         output_field=models.DecimalField(max_digits=14, decimal_places=6),
@@ -127,6 +146,20 @@ class ExperimentParallel(models.Model):
     class Meta:
         db_table = "Experiment_Parallels"
         constraints = [
+            models.CheckConstraint(
+                condition=Q(m0_without_oil_g__isnull=True, m1_without_oil_g__isnull=True, m2_without_oil_g__isnull=True)
+                | Q(
+                    m0_without_oil_g__isnull=False, m1_without_oil_g__isnull=False, m2_without_oil_g__isnull=False,
+                    m0_without_oil_g__gte=0, m1_without_oil_g__gt=F("m0_without_oil_g"),
+                    m2_without_oil_g__gte=F("m0_without_oil_g"), m2_without_oil_g__lte=F("m1_without_oil_g"),
+                    reported_dry_residue_without_oil_g__isnull=True, reported_dry_matter_without_oil_pct__isnull=True,
+                ),
+                name="tech_oil_free_weighing_or_reported",
+            ),
+            models.CheckConstraint(
+                condition=Q(reported_dry_residue_without_oil_g__gte=0, reported_dry_matter_without_oil_pct__range=(0, 100)),
+                name="tech_oil_free_reported_range",
+            ),
             models.UniqueConstraint(fields=["experiment", "parallel_number"], name="tech_parallel_number_unique"),
             models.CheckConstraint(condition=Q(parallel_number__gt=0), name="tech_parallel_number_positive"),
             models.CheckConstraint(

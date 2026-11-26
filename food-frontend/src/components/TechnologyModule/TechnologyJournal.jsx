@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { getTechnologyRecord, listTechnologyRecords } from "../../api/technology";
+import { getTechnologyRecord, getTechnologyRecordFilters, listTechnologyRecords } from "../../api/technology";
+import TechnologyEntry from "./TechnologyEntry";
+import { batchName, SelectOptions } from "./TechnologyFields";
 import { formatCalculatedPercent, formatNumber, formatUnit } from "./technologyFormat";
 
 function Facts({ items }) {
@@ -10,10 +12,12 @@ function Facts({ items }) {
   );
 }
 
-function WeighingTable({ parallels }) {
+function WeighingTable({ parallels, title = "Взвешивания по параллелям", withoutOil = false }) {
+  const suffix = withoutOil ? "_without_oil" : "";
   return (
     <div className="technology-table-wrap">
-      <table className="technology-table" aria-label="Взвешивания по параллелям">
+      <table className="technology-table" aria-label={title}>
+        {withoutOil && <caption>{title}</caption>}
         <thead>
           <tr>
             <th scope="col">№</th>
@@ -22,16 +26,23 @@ function WeighingTable({ parallels }) {
             <th scope="col">После сушки m₂, г</th>
             <th scope="col">Сухой остаток, г</th>
             <th scope="col">Сухие вещества, %</th>
+            {withoutOil && <th scope="col">Источник результата</th>}
           </tr>
         </thead>
         <tbody>
           {parallels.map((parallel) => (
             <tr key={parallel.parallel_number}>
               <th scope="row">{parallel.parallel_number}</th>
-              {["m0_g", "m1_g", "m2_g", "dry_residue_g"].map((key) =>
-                <td key={key} className="technology-number">{formatNumber(parallel[key])}</td>,
+              {["m0", "m1", "m2", "dry_residue"].map((key) =>
+                <td key={key} className="technology-number">{formatNumber(parallel[`${key}${suffix}_g`])}</td>,
               )}
-              <td className="technology-number">{formatCalculatedPercent(parallel.dry_matter_pct)}</td>
+              <td className="technology-number">
+                {withoutOil && parallel.m0_without_oil_g == null ? formatNumber(parallel.dry_matter_without_oil_pct)
+                  : formatCalculatedPercent(parallel[`dry_matter${suffix}_pct`])}
+              </td>
+              {withoutOil && <td>{parallel.m0_without_oil_g != null ? "По взвешиваниям"
+                : parallel.dry_residue_without_oil_g != null || parallel.dry_matter_without_oil_pct != null
+                  ? "Введено вручную" : "—"}</td>}
             </tr>
           ))}
         </tbody>
@@ -46,25 +57,38 @@ function AnalysisResults({ record }) {
     ...record.preprocessing.map((part) => ({ key: `prep-${part.id}`,
       name: `После первичной обработки · ${part.processing_name}`, analyses: part.analyses })),
     ...allHeating(record).map((part) => ({ key: `heat-${part.id}`,
-      name: `После тепловой обработки · ${part.processing_name}`, analyses: part.analyses })),
+      name: `После тепловой обработки · ${part.processing_name}`, analyses: part.analyses, usesOil: part.uses_oil })),
   ];
   const measured = groups.filter(({ analyses }) => analyses.length);
   if (!measured.length) return <p>Лабораторный анализ ещё не внесён.</p>;
-  return measured.map(({ key, name, analyses }) => (
+  return measured.map(({ key, name, analyses, usesOil }) => (
     <section className="technology-subsection" key={key}>
       <h3>{name}</h3>
       {analyses.map((analysis, index) => (
         <div className="technology-stack" key={analysis.id}>
           {analyses.length > 1 && <h4>Анализ {index + 1}</h4>}
-          <p>{analysis.result_mode === "reported" ? "Готовый процент лаборатории" : "Среднее по параллелям"} ·{" "}
+          <p>{usesOil && "С учётом масла · "}{analysis.result_mode === "reported" ? "Готовый процент лаборатории" : "Среднее по параллелям"} ·{" "}
             <strong>{formatAnalysisPercent(analysis, " %")}</strong>
           </p>
+          {usesOil && analysis.reported_dry_matter_without_oil_pct != null && (
+            <p>Без учёта масла · Итог по протоколу · <strong>{formatUnit(analysis.reported_dry_matter_without_oil_pct, "%")}</strong></p>
+          )}
           {analysis.result_mode === "weighings" && (
             <>
-              <p>Средний сухой остаток в навеске · {formatUnit(analysis.avg_dry_residue_g, "г")}</p>
+              <p>{usesOil && "С учётом масла · "}Средний сухой остаток в навеске · {formatUnit(analysis.avg_dry_residue_g, "г")}</p>
+              {usesOil && analysis.oil_free_pct_count > 0 && (
+                <p>Без учёта масла · Средняя массовая доля · {formatCalculatedPercent(analysis.avg_dry_matter_without_oil_pct, " %")}
+                  {" · "}{analysis.oil_free_pct_count} из {analysis.parallel_count} параллелей</p>
+              )}
+              {usesOil && analysis.oil_free_residue_count > 0 && (
+                <p>Без учёта масла · Средний сухой остаток · {formatUnit(analysis.avg_dry_residue_without_oil_g, "г")}
+                  {" · "}{analysis.oil_free_residue_count} из {analysis.parallel_count} параллелей</p>
+              )}
               <details>
                 <summary>Взвешивания по параллелям ({analysis.parallel_count})</summary>
-                <WeighingTable parallels={analysis.parallels ?? []} />
+                {usesOil && <h4>С учётом масла</h4>}
+                <WeighingTable parallels={analysis.parallels ?? []} title={usesOil ? "С учётом масла" : undefined} />
+                {usesOil && <WeighingTable parallels={analysis.parallels ?? []} title="Без учёта масла" withoutOil />}
               </details>
             </>
           )}
@@ -80,6 +104,7 @@ function HeatingResults({ part }) {
       ["Тепловая обработка", part.processing_name], ["После нагрева", formatUnit(part.weight_g, "г")],
       ["Температура среды при закладке", formatUnit(part.processing_temperature_celsius, "°C")],
       ["Добавлено воды", formatUnit(part.added_water_g, "г")], ["Добавлено масла", formatUnit(part.added_oil_g, "г")],
+      ...(part.uses_oil && part.added_oil_g == null ? [["Масло использовали", "Да"]] : []),
     ]} />
   );
 }
@@ -136,7 +161,7 @@ function formatAnalysisPercent({ final_dry_matter_pct: value, result_mode: mode 
   return value == null ? "—" : formatNumber(value) + suffix;
 }
 
-function RecordRow({ record, onOpen }) {
+function RecordRow({ record, onOpen, onEdit }) {
   const { batch, preprocessing } = record;
   const heating = allHeating(record);
   const latestStages = [
@@ -150,7 +175,9 @@ function RecordRow({ record, onOpen }) {
   const stagesWithAnalyses = [
     { key: "raw", stage: "Без обработки", analyses: record.analyses },
     ...preprocessing.map((part) => ({ key: `prep-${part.id}`, stage: "После первичной обработки", analyses: part.analyses })),
-    ...heating.map((part) => ({ key: `heat-${part.id}`, stage: "После тепловой обработки", analyses: part.analyses })),
+    ...heating.map((part) => ({
+      key: `heat-${part.id}`, stage: "После тепловой обработки", analyses: part.analyses, usesOil: part.uses_oil,
+    })),
   ].filter(({ analyses }) => analyses.length);
   const labelAnalysisStage = stagesWithAnalyses.length > 1 || stagesWithAnalyses.some(({ key }) =>
     !latestStages.some((latest) => latest.key === key),
@@ -166,23 +193,59 @@ function RecordRow({ record, onOpen }) {
         <div key={part.key}>{formatNumber(part.weight_g)}<small>{part.stage}</small></div>
       ))}</td>
       <td className="technology-number">
-        {stagesWithAnalyses.length ? stagesWithAnalyses.map(({ key, stage, analyses }) => (
+        {stagesWithAnalyses.length ? stagesWithAnalyses.map(({ key, stage, analyses, usesOil }) => (
           <div key={key}>
-            {analyses.map((analysis) => formatAnalysisPercent(analysis)).join(" / ")}
+            {analyses.map((analysis) => (
+              <div key={analysis.id}>
+                {(usesOil || analysis.final_dry_matter_without_oil_pct != null) ? (
+                  <>
+                    <div>{formatAnalysisPercent(analysis)} <small className="technology-inline-label">с учётом масла</small></div>
+                    {analysis.final_dry_matter_without_oil_pct != null && <div>{analysis.reported_dry_matter_without_oil_pct != null
+                      ? formatNumber(analysis.reported_dry_matter_without_oil_pct)
+                      : formatCalculatedPercent(analysis.final_dry_matter_without_oil_pct)}
+                      {" "}<small className="technology-inline-label">без учёта масла</small></div>}
+                  </>
+                ) : formatAnalysisPercent(analysis)}
+              </div>
+            ))}
             {labelAnalysisStage && <small>{stage}</small>}
           </div>
         )) : "—"}
       </td>
-      <td><button type="button" data-record-id={record.id} onClick={() => onOpen(record.id)}
-        aria-label={`Открыть запись: ${batch.product_name}, партия №${batch.id}, ${processing.join(", ") || "без обработки"}`}>Открыть</button></td>
+      <td><div className="technology-actions">
+        <button type="button" data-record-id={record.id} onClick={() => onOpen(record.id)}
+          aria-label={`Открыть запись: ${batch.product_name}, партия №${batch.id}, ${processing.join(", ") || "без обработки"}`}>Открыть</button>
+        <button type="button" data-edit-id={record.id} onClick={() => onEdit(record.id)}
+          aria-label={`Редактировать запись: ${batch.product_name}, партия №${batch.id}, ${processing.join(", ") || "без обработки"}`}
+          title="Редактировать"><span aria-hidden="true">✏️</span></button>
+      </div></td>
     </tr>
   );
 }
 
-export default function TechnologyJournal() {
+function SortHeader({ label, field, ordering, onSort, numeric, children }) {
+  const active = ordering?.replace(/^-/, "") === field;
+  const direction = !active ? "none" : ordering.startsWith("-") ? "descending" : "ascending";
+  return (
+    <th scope="col" aria-sort={direction} className={numeric ? "technology-number" : undefined}>
+      <button className="technology-sort" type="button" onClick={() => onSort(field)}>
+        {label} <span aria-hidden="true">{direction === "ascending" ? "↑" : direction === "descending" ? "↓" : "↕"}</span>
+      </button>
+      {children}
+    </th>
+  );
+}
+
+export default function TechnologyJournal({ options, onProcessingTypeAdded }) {
   const [page, setPage] = useState(1);
+  const [query, setQuery] = useState({});
   const [selected, setSelected] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [result, setResult] = useState({});
+  const [filterOptions, setFilterOptions] = useState(null);
+  const [filterError, setFilterError] = useState(false);
+  const [filterAttempt, setFilterAttempt] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const focusId = useRef(null);
   const backButton = useRef(null);
@@ -190,18 +253,32 @@ export default function TechnologyJournal() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const pending = selected
-      ? getTechnologyRecord(selected, controller.signal)
-      : listTechnologyRecords(page, controller.signal);
-    pending.then((data) => {
-      if (!controller.signal.aborted) setResult({ selected, page, attempt, data });
-    }).catch((error) => {
-      if (!controller.signal.aborted) setResult({ selected, page, attempt, error });
+    getTechnologyRecordFilters(controller.signal).then((data) => {
+      if (!controller.signal.aborted) {
+        setFilterOptions(data);
+        setFilterError(false);
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) setFilterError(true);
     });
     return () => controller.abort();
-  }, [selected, page, attempt]);
+  }, [filterAttempt]);
 
-  const current = result.selected === selected && result.page === page && result.attempt === attempt ? result : {};
+  useEffect(() => {
+    const controller = new AbortController();
+    const pending = selected
+      ? getTechnologyRecord(selected, controller.signal)
+      : listTechnologyRecords(page, controller.signal, query);
+    pending.then((data) => {
+      if (!controller.signal.aborted) setResult({ selected, page, query, attempt, data });
+    }).catch((error) => {
+      if (!controller.signal.aborted) setResult({ selected, page, query, attempt, error });
+    });
+    return () => controller.abort();
+  }, [selected, page, query, attempt]);
+
+  const current = result.selected === selected && result.page === page
+    && result.query === query && result.attempt === attempt ? result : {};
   const { data, error } = current;
 
   useEffect(() => {
@@ -215,39 +292,96 @@ export default function TechnologyJournal() {
     }
   }, [selected, data]);
 
+  function open(id, edit) {
+    setSaved(false);
+    setEditing(edit);
+    setSelected(id);
+  }
+
+  function back() {
+    focusId.current = selected;
+    setEditing(false);
+    setSelected(null);
+  }
+
+  function changeQuery(key, value) {
+    setPage(1);
+    setQuery((current) => ({ ...current, [key]: value || undefined }));
+  }
+
+  const onSort = (field) => changeQuery("ordering", query.ordering === field ? `-${field}` : field);
+  const sortProps = { ordering: query.ordering, onSort };
+  const batches = filterOptions?.batches.map((batch) => ({ id: batch.id, name: batchName(batch) })) ?? [];
+
   return (
     <section className="technology-panel">
       {selected ? (
-        <div><button ref={backButton} type="button" onClick={() => { focusId.current = selected; setSelected(null); }}>К списку</button></div>
+        <div><button ref={backButton} type="button" onClick={back}>К списку</button></div>
       ) : <h2>Журнал технолога</h2>}
-      {error ? (
+      {saved && <p role="status" className="technology-saved">Изменения сохранены.</p>}
+      {error && (
         <div className="technology-actions" role="alert">
           <p className="technology-error">{error.response?.status === 404 ? "Запись не найдена." : "Не удалось загрузить данные."}</p>
           <button type="button" onClick={() => setAttempt((value) => value + 1)}>Повторить</button>
         </div>
-      ) : !data ? (
-        <p role="status">Загрузка…</p>
-      ) : selected ? (
-        <RecordDetails key={selected} record={data} />
-      ) : !data.results.length ? (
-        <p>Технологических записей пока нет.</p>
+      )}
+      {selected ? (
+        !data ? !error && <p role="status">Загрузка…</p> : editing ? (
+          data.editable ? (
+            <>
+              <h2>Редактирование записи</h2>
+              <TechnologyEntry key={selected} record={data} options={options} onProcessingTypeAdded={onProcessingTypeAdded}
+                onCancel={back} onSaved={() => {
+                  back();
+                  setPage(1);
+                  setAttempt((value) => value + 1);
+                  setFilterAttempt((value) => value + 1);
+                  setSaved(true);
+                }} />
+            </>
+          ) : <p>Эта запись содержит несколько обработок или анализов. Их можно посмотреть в подробностях записи.</p>
+        ) : <RecordDetails key={selected} record={data} />
       ) : (
         <>
+          {filterError && (
+            <div className="technology-actions" role="alert">
+              <p className="technology-error">Не удалось загрузить варианты фильтров.</p>
+              <button type="button" onClick={() => setFilterAttempt((value) => value + 1)}>Повторить</button>
+            </div>
+          )}
           <div className="technology-table-wrap" ref={table}>
             <table className="technology-table" aria-label="Внесённые технологические данные">
               <thead>
                 <tr>
-                  <th scope="col">Продукт и партия</th>
-                  <th scope="col">Обработка</th>
-                  <th scope="col" className="technology-number">Масса, г</th>
-                  <th scope="col" className="technology-number">Сухие вещества, %</th>
-                  <th scope="col"><span className="technology-visually-hidden">Подробности</span></th>
+                  <SortHeader {...sortProps} label="Продукт и партия" field="batch">
+                    <select className="technology-filter" aria-label="Фильтр по партии" value={query.batch ?? ""}
+                      disabled={!filterOptions} onChange={(event) => changeQuery("batch", event.target.value)}>
+                      <SelectOptions items={batches} placeholder="Все партии" />
+                    </select>
+                  </SortHeader>
+                  <SortHeader {...sortProps} label="Обработка" field="processing">
+                    <select className="technology-filter" aria-label="Фильтр по обработке" value={query.processing ?? ""}
+                      disabled={!filterOptions} onChange={(event) => changeQuery("processing", event.target.value)}>
+                      <SelectOptions items={filterOptions?.processing ?? []} placeholder="Все способы" />
+                    </select>
+                  </SortHeader>
+                  <SortHeader {...sortProps} label="Масса, г" field="weight" numeric />
+                  <SortHeader {...sortProps} label="Сухие вещества, %" field="dry_matter" numeric />
+                  <th scope="col"><span className="technology-visually-hidden">Действия</span></th>
                 </tr>
               </thead>
-              <tbody>{data.results.map((record) => <RecordRow key={record.id} record={record} onOpen={setSelected} />)}</tbody>
+              <tbody>
+                {data?.results.map((record) => (
+                  <RecordRow key={record.id} record={record} onOpen={(id) => open(id, false)} onEdit={(id) => open(id, true)} />
+                ))}
+                {!data && !error && <tr><td colSpan={5}><p role="status">Загрузка…</p></td></tr>}
+                {data?.results.length === 0 && <tr><td colSpan={5}>
+                  {query.batch || query.processing ? "По выбранным фильтрам ничего не найдено." : "Технологических записей пока нет."}
+                </td></tr>}
+              </tbody>
             </table>
           </div>
-          {(data.previous || data.next) && (
+          {(data?.previous || data?.next) && (
             <div className="technology-actions">
               <button type="button" disabled={!data.previous} onClick={() => setPage(page - 1)}>Назад</button>
               <span>Страница {page}</span>

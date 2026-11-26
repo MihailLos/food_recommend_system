@@ -186,3 +186,31 @@
     min-height: 44px;
   }
 }
+
+.technology-table .technology-inline-label { display: inline; }
+
+.technology-table .technology-sort {
+  background: transparent;
+  border: 0;
+  padding-inline: 0;
+  text-align: inherit;
+  font-weight: 600;
+}
+
+.technology-table .technology-filter {
+  display: block;
+  max-width: 220px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d5d9d5;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+.technology-table caption {
+  text-align: left;
+  font-weight: 600;
+  padding-block: 8px;
+}

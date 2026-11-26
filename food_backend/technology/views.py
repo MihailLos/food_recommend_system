@@ -1,5 +1,8 @@
 from django.db import connection, transaction
-from django.db.models import Avg, Count, F, Prefetch, Q
+from django.db.models import Avg, Case, Exists, F, OuterRef, Q, Subquery, Value, When
+from django.db.models.functions import Coalesce
+from django.shortcuts import get_object_or_404
+from rest_framework import serializers
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
@@ -10,64 +13,147 @@ from rest_framework.views import APIView
 from catalog.models import FoodProducts, FoodProductSubtypes, FoodProductTypes
 
 from .models import (
-    AnalyzedProduct, ExperimentData, ExperimentParallel, PreprocessedProductData,
+    AnalyzedProduct, ExperimentData, PreprocessedProductData,
     ProcessedProductData, ProcessingType, UnprocessedProductData,
 )
+from .records import edit_parts, record_details, record_queryset, update_record
 from .serializers import (
-    BatchSerializer, DictionaryItem, ProcessingTypeInput, RecordInput, RecordSerializer, TechnologyOptions,
+    BatchSerializer, DictionaryItem, JournalFilterOptions, ProcessingTypeInput, RecordDetailsSerializer,
+    RecordEditInput, RecordInput, RecordSerializer, TechnologyOptions,
 )
 
 
-def record_queryset(*, details=False):
-    analyses = ExperimentData.objects.annotate(
-        parallel_count=Count("parallels"),
-        avg_dry_residue_g=Avg("parallels__dry_residue_g"),
-        final_dry_matter_pct=Avg("parallels__dry_matter_pct", default=F("reported_dry_matter_pct")),
-    ).order_by("id")
-    if details:
-        analyses = analyses.prefetch_related(Prefetch(
-            "parallels", queryset=ExperimentParallel.objects.order_by("parallel_number"),
-            to_attr="ordered_parallels",
-        ))
+SORT_FIELDS = ("batch", "processing", "weight", "dry_matter")
 
-    def with_analyses(queryset):
-        return queryset.prefetch_related(Prefetch("experimentdata_set", queryset=analyses, to_attr="analyses"))
 
-    heating = with_analyses(ProcessedProductData.objects.select_related("cpt").order_by("id"))
-    heating_relation = Prefetch("processedproductdata_set", queryset=heating, to_attr="heating")
-    preprocessing = with_analyses(
-        PreprocessedProductData.objects.select_related("cpt").order_by("id"),
-    ).prefetch_related(heating_relation)
-    return with_analyses(UnprocessedProductData.objects.select_related("analyzed_product__manual")).prefetch_related(
-        Prefetch("preprocessedproductdata_set", queryset=preprocessing, to_attr="preprocessing"),
-        heating_relation,
-    ).order_by("-id")
+class JournalQuery(serializers.Serializer):
+    batch = serializers.IntegerField(min_value=1, max_value=2147483647, required=False)
+    processing = serializers.IntegerField(min_value=0, max_value=2147483647, required=False)
+    ordering = serializers.ChoiceField(
+        choices=[field for key in SORT_FIELDS for field in (key, f"-{key}")], required=False,
+    )
+
+
+def journal_queryset(params):
+    records = record_queryset()
+    if "batch" in params:
+        records = records.filter(analyzed_product_id=params["batch"])
+    heat = ProcessedProductData.objects.filter(
+        Q(unprocessed_product_id=OuterRef("pk")) | Q(preprocessed_product__unprocessed_product_id=OuterRef("pk")),
+    )
+    prep = PreprocessedProductData.objects.filter(unprocessed_product_id=OuterRef("pk"))
+    method = params.get("processing")
+    if method == 0:
+        records = records.filter(~Exists(heat), ~Exists(prep))
+    elif method is not None:
+        records = records.filter(Exists(heat.filter(cpt_id=method)) | (~Exists(heat) & Exists(prep.filter(cpt_id=method))))
+    ordering = params.get("ordering")
+    if not ordering:
+        return records
+    key = ordering.lstrip("-")
+    if key == "batch":
+        expression = F("analyzed_product_id")
+    elif key == "processing":
+        expression = Coalesce(
+            Subquery(heat.order_by("cpt__name", "id").values("cpt__name")[:1]),
+            Subquery(prep.order_by("cpt__name", "id").values("cpt__name")[:1]),
+            Value("Без обработки"),
+        )
+    elif key == "weight":
+        expression = Coalesce(
+            Subquery(heat.order_by("id").values("weight_g")[:1]),
+            Subquery(prep.order_by("id").values("weight_g")[:1]),
+            F("weight_g"),
+        )
+    else:
+        expression = Subquery(ExperimentData.objects.filter(
+            Q(unprocessed_product_id=OuterRef("pk"))
+            | Q(preprocessed_product__unprocessed_product_id=OuterRef("pk"))
+            | Q(processed_product__unprocessed_product_id=OuterRef("pk"))
+            | Q(processed_product__preprocessed_product__unprocessed_product_id=OuterRef("pk")),
+        ).annotate(
+            stage_order=Case(
+                When(processed_product__isnull=False, then=Value(0)),
+                When(preprocessed_product__isnull=False, then=Value(1)),
+                default=Value(2),
+            ),
+            percent=Avg("parallels__dry_matter_pct", default=F("reported_dry_matter_pct")),
+        ).order_by("stage_order", "id").values("percent")[:1])
+    direction = expression.desc if ordering.startswith("-") else expression.asc
+    return records.order_by(direction(nulls_last=True), "-id")
 
 
 class RecordListView(ListCreateAPIView):
     permission_classes = [IsAdminUser]
 
     def get_queryset(self):
-        return record_queryset()
+        filters = JournalQuery(data=self.request.query_params)
+        filters.is_valid(raise_exception=True)
+        return journal_queryset(filters.validated_data)
+
+    @extend_schema(parameters=[JournalQuery])
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
     def get_serializer_class(self):
         return RecordInput if self.request.method == "POST" else RecordSerializer
 
-    @extend_schema(request=RecordInput, responses={201: RecordSerializer})
+    @extend_schema(request=RecordInput, responses={201: RecordDetailsSerializer})
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         record = record_queryset(details=True).get(pk=serializer.save().pk)
-        return Response(RecordSerializer(record).data, status=status.HTTP_201_CREATED)
+        return Response(record_details(record), status=status.HTTP_201_CREATED)
 
 
 class RecordDetailView(RetrieveAPIView):
     permission_classes = [IsAdminUser]
-    serializer_class = RecordSerializer
+    serializer_class = RecordDetailsSerializer
 
     def get_queryset(self):
         return record_queryset(details=True)
+
+    def retrieve(self, request, *args, **kwargs):
+        return Response(record_details(self.get_object()))
+
+    @extend_schema(request=RecordEditInput, responses=RecordDetailsSerializer)
+    @transaction.atomic
+    def put(self, request, pk):
+        raw = get_object_or_404(UnprocessedProductData.objects.select_for_update(), pk=pk)
+        AnalyzedProduct.objects.select_for_update().get(pk=raw.analyzed_product_id)
+        record = self.get_queryset().get(pk=raw.pk)
+        parts = edit_parts(record)
+        if parts is None:
+            return Response({"detail": "В записи несколько обработок или анализов."}, status=status.HTTP_409_CONFLICT)
+        serializer = RecordEditInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if serializer.validated_data["edit_version"] != record_details(record)["edit_version"]:
+            return Response({"detail": "Запись уже изменилась. Откройте её заново."}, status=status.HTTP_409_CONFLICT)
+        update_record(record, serializer.validated_data, parts)
+        return Response(record_details(self.get_queryset().get(pk=raw.pk)))
+
+
+class JournalFiltersView(APIView):
+    permission_classes = [IsAdminUser]
+
+    @extend_schema(responses=JournalFilterOptions)
+    def get(self, request):
+        batches = AnalyzedProduct.objects.filter(unprocessedproductdata__isnull=False).select_related("manual").distinct().order_by("id")
+        heat = ProcessedProductData.objects.filter(
+            Q(unprocessed_product_id=OuterRef("unprocessed_product_id"))
+            | Q(preprocessed_product__unprocessed_product_id=OuterRef("unprocessed_product_id")),
+        )
+        primary = PreprocessedProductData.objects.filter(~Exists(heat)).values("cpt_id")
+        heated = ProcessedProductData.objects.values("cpt_id")
+        methods = ProcessingType.objects.filter(Q(pk__in=primary) | Q(pk__in=heated)).order_by("name", "id")
+        has_raw = UnprocessedProductData.objects.filter(
+            preprocessedproductdata__isnull=True, processedproductdata__isnull=True,
+        ).exists()
+        processing = list(methods.values("id", "name"))
+        if has_raw:
+            processing.insert(0, {"id": 0, "name": "Без обработки"})
+        return Response({"batches": BatchSerializer(batches, many=True).data, "processing": processing})
 
 
 class BatchListView(ListAPIView):

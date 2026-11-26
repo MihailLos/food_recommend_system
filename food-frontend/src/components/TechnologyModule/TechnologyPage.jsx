@@ -39,6 +39,13 @@ export default function TechnologyPage() {
     if (saved) journalTab.current?.focus();
   }, [saved, revision]);
 
+  const onProcessingTypeAdded = (item) => {
+    setOptions((current) => ({
+      ...current,
+      processing_types: mergeProcessingTypes(current.processing_types, [item]),
+    }));
+  };
+
   return (
     <div className="technology-page">
       <div className="technology-panel technology-actions technology-tabs" role="group" aria-label="Технологический модуль">
@@ -53,12 +60,7 @@ export default function TechnologyPage() {
         </div>
       )}
       <div hidden={tab !== "entry"}>
-        <TechnologyEntry key={revision} options={options} onProcessingTypeAdded={(item) => {
-          setOptions((current) => ({
-            ...current,
-            processing_types: mergeProcessingTypes(current.processing_types, [item]),
-          }));
-        }} onSaved={() => {
+        <TechnologyEntry key={revision} options={options} onProcessingTypeAdded={onProcessingTypeAdded} onSaved={() => {
           setRevision((value) => value + 1);
           setSaved(true);
           setTab("journal");
@@ -67,7 +69,7 @@ export default function TechnologyPage() {
       {tab === "journal" && (
         <>
           {saved && <p className="technology-saved" role="status">Результаты сохранены.</p>}
-          <TechnologyJournal key={revision} />
+          <TechnologyJournal key={revision} options={options} onProcessingTypeAdded={onProcessingTypeAdded} />
         </>
       )}
     </div>

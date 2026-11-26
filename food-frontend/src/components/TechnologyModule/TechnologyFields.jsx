@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { createProcessingType, getTechnologyMatches } from "../../api/technology";
 
 export function Field({ label, hint, required, error, name, options, ...props }) {
-  const id = `technology-${name}`;
+  const id = useId();
   const attributes = {
     id, name, required, ...props,
     "aria-invalid": Boolean(error),
@@ -33,8 +33,8 @@ export function SelectOptions({ items, placeholder }) {
   );
 }
 
-export function ProcessingPicker({ name, label, error, items, onAdded }) {
-  const [selected, setSelected] = useState("");
+export function ProcessingPicker({ name, label, error, items, onAdded, initialValue }) {
+  const [selected, setSelected] = useState(initialValue ?? "");
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [saving, setSaving] = useState(false);

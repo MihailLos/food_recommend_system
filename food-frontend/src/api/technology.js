@@ -14,8 +14,12 @@ export function getTechnologyMatches(path, signal) {
   return client.get(`${base}/${path}`, { signal }).then(({ data }) => data.results ?? data);
 }
 
-export function listTechnologyRecords(page, signal) {
-  return client.get(`${base}/records/`, { params: { page }, signal }).then(({ data }) => data);
+export function listTechnologyRecords(page, signal, filters) {
+  return client.get(`${base}/records/`, { params: { page, ...filters }, signal }).then(({ data }) => data);
+}
+
+export function getTechnologyRecordFilters(signal) {
+  return client.get(`${base}/record-filters/`, { signal }).then(({ data }) => data);
 }
 
 export function getTechnologyRecord(id, signal) {
@@ -24,4 +28,8 @@ export function getTechnologyRecord(id, signal) {
 
 export function createTechnologyRecord(record) {
   return client.post(`${base}/records/`, record).then(({ data }) => data);
+}
+
+export function updateTechnologyRecord(id, record) {
+  return client.put(`${base}/records/${id}/`, record).then(({ data }) => data);
 }

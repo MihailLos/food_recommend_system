@@ -1,7 +1,8 @@
 import React from "react";
 import { fireEvent, render, screen, waitForElementToBeRemoved, within } from "@testing-library/react";
 import {
-  createProcessingType, createTechnologyRecord, getTechnologyMatches, getTechnologyOptions, getTechnologyRecord, listTechnologyRecords,
+  createProcessingType, createTechnologyRecord, getTechnologyMatches, getTechnologyOptions, getTechnologyRecord,
+  getTechnologyRecordFilters, listTechnologyRecords, updateTechnologyRecord,
 } from "../../api/technology";
 import TechnologyPage from "./TechnologyPage";
 
@@ -11,7 +12,9 @@ jest.mock("../../api/technology", () => ({
   getTechnologyMatches: jest.fn(),
   getTechnologyOptions: jest.fn(),
   getTechnologyRecord: jest.fn(),
+  getTechnologyRecordFilters: jest.fn(),
   listTechnologyRecords: jest.fn(),
+  updateTechnologyRecord: jest.fn(),
 }));
 
 const batch = {
@@ -36,6 +39,7 @@ beforeEach(() => {
   getTechnologyMatches.mockResolvedValue([batch]);
   listTechnologyRecords.mockResolvedValue({ results: [record] });
   getTechnologyRecord.mockResolvedValue(record);
+  getTechnologyRecordFilters.mockResolvedValue({ batches: [batch], processing: [{ id: 7, name: "Варка" }] });
   createTechnologyRecord.mockResolvedValue(record);
 });
 
@@ -148,5 +152,50 @@ test("adds a processing type to the shared dictionary and selects it for the rec
   expect(await screen.findByText("Результаты сохранены.")).toBeInTheDocument();
   expect(createTechnologyRecord).toHaveBeenCalledWith(expect.objectContaining({
     heating: expect.objectContaining({ cpt: 21 }),
+  }));
+});
+
+test("filters and sorts the journal, then edits an existing oil analysis", async () => {
+  const heated = {
+    ...record, editable: true, edit_version: "version", analyses: [],
+    heating: [{
+      id: 12, cpt: 7, processing_name: "Варка", uses_oil: true, added_oil_g: "12",
+      weight_g: "160", analyses: record.analyses,
+    }],
+  };
+  getTechnologyRecord.mockResolvedValue(heated);
+  updateTechnologyRecord.mockResolvedValue(heated);
+  render(<TechnologyPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Внесённые данные" }));
+  await screen.findByRole("option", { name: /№3 · Морковь/ });
+  fireEvent.change(screen.getByRole("combobox", { name: "Фильтр по партии" }), { target: { value: "3" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Фильтр по обработке" }), { target: { value: "7" } });
+  fireEvent.click(screen.getByRole("button", { name: "Масса, г" }));
+  fireEvent.click(screen.getByRole("button", { name: "Масса, г" }));
+  expect(listTechnologyRecords).toHaveBeenLastCalledWith(1, expect.anything(), { batch: "3", processing: "7", ordering: "-weight" });
+
+  fireEvent.click(await screen.findByRole("button", { name: /Редактировать запись/ }));
+  const editor = within(await screen.findByRole("heading", { name: "Редактирование записи" }).then((heading) => heading.parentElement));
+  expect(editor.getByRole("combobox", { name: "Способ обработки" })).toHaveValue("7");
+  expect(editor.getByRole("textbox", { name: "Масса после нагрева, г" })).toHaveValue("160");
+  const first = within(editor.getByRole("group", { name: "Параллель 1" }));
+  fill("Тара m₀, г (без учёта масла)", "10", first);
+  fill("Бюкс с навеской до сушки m₁, г (без учёта масла)", "15", first);
+  fill("Бюкс с навеской после сушки m₂, г (без учёта масла)", "10,4", first);
+  expect(first.getByText("Без учёта масла · Сухой остаток 0,4 г · 8,00 %")).toBeInTheDocument();
+  const second = within(editor.getByRole("group", { name: "Параллель 2" }));
+  fill("Массовая доля без учёта масла, %", "9", second);
+  fill("Итоговая массовая доля без учёта масла по протоколу, %", "8,4", editor);
+  fireEvent.click(editor.getByRole("button", { name: "Сохранить изменения" }));
+  expect(await screen.findByText("Изменения сохранены.")).toBeInTheDocument();
+  expect(updateTechnologyRecord).toHaveBeenCalledWith(6, expect.objectContaining({
+    edit_version: "version", batch_id: 3,
+    analysis: expect.objectContaining({
+      reported_dry_matter_without_oil_pct: "8.4",
+      parallels: [
+        expect.objectContaining({ parallel_number: 1, m2_without_oil_g: "10.4" }),
+        expect.objectContaining({ parallel_number: 2, reported_dry_matter_without_oil_pct: "9" }),
+      ],
+    }),
   }));
 });

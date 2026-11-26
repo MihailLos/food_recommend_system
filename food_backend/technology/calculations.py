@@ -31,8 +31,8 @@ def dry_matter_retention(processed_product_id, *, before_experiment_id=None, aft
                 SELECT id FROM "Unprocessed_Products_Data" WHERE analyzed_product_id = %s
             )
         """
-    if product.added_oil_g is not None and product.added_oil_g > 0:
-        # The schema has no measurement of dry matter attributable to the oil.
+    if product.uses_oil:
+        # A sample percentage without oil does not give the oil-free weight of the full product.
         return None
 
     with connection.cursor() as cursor:
