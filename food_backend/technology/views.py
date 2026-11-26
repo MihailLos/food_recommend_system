@@ -1,4 +1,4 @@
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Avg, Count, F, Prefetch, Q
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -13,7 +13,9 @@ from .models import (
     AnalyzedProduct, ExperimentData, ExperimentParallel, PreprocessedProductData,
     ProcessedProductData, ProcessingType, UnprocessedProductData,
 )
-from .serializers import BatchSerializer, DictionaryItem, RecordInput, RecordSerializer, TechnologyOptions
+from .serializers import (
+    BatchSerializer, DictionaryItem, ProcessingTypeInput, RecordInput, RecordSerializer, TechnologyOptions,
+)
 
 
 def record_queryset(*, details=False):
@@ -97,6 +99,43 @@ class OptionsView(APIView):
             "groups": list(FoodProductTypes.objects.order_by("name", "id").values("id", "name")),
             "subgroups": list(FoodProductSubtypes.objects.order_by("name", "id").values("id", "name", "product_type_id")),
         })
+
+
+class ProcessingTypeCreateView(APIView):
+    permission_classes = [IsAdminUser]
+
+    @extend_schema(request=ProcessingTypeInput, responses={200: DictionaryItem, 201: DictionaryItem})
+    @transaction.atomic
+    def post(self, request):
+        serializer = ProcessingTypeInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data["name"]
+
+        with connection.cursor() as cursor:
+            # Serialize lookup and insertion, including concurrent writes to the catalog table.
+            cursor.execute('LOCK TABLE "Culinary_Processing_Types" IN SHARE ROW EXCLUSIVE MODE')
+            existing = next((
+                item for item in ProcessingType.objects.order_by("id")
+                if " ".join(item.name.split()).casefold() == name.casefold()
+            ), None)
+            if existing is not None:
+                return Response(DictionaryItem(existing).data)
+
+            # Imported IDs can be ahead of the catalog sequence.
+            cursor.execute(
+                """
+                INSERT INTO "Culinary_Processing_Types" ("ID", "Name")
+                SELECT setval(sequence_id::regclass, GREATEST(
+                    nextval(sequence_id::regclass),
+                    (SELECT COALESCE(MAX("ID"), 0)::bigint + 1 FROM "Culinary_Processing_Types")
+                )), %s
+                FROM pg_get_serial_sequence('"Culinary_Processing_Types"', 'ID') AS sequence(sequence_id)
+                RETURNING "ID"
+                """,
+                [name],
+            )
+            processing_id = cursor.fetchone()[0]
+        return Response({"id": processing_id, "name": name}, status=status.HTTP_201_CREATED)
 
 
 class CatalogMatchView(APIView):

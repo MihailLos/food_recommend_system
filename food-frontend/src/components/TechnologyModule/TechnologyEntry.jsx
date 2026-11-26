@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { createTechnologyRecord } from "../../api/technology";
-import { BatchPicker, CatalogPicker, Choice, Field, SelectOptions } from "./TechnologyFields";
+import { BatchPicker, CatalogPicker, Choice, Field, ProcessingPicker, SelectOptions } from "./TechnologyFields";
 import { formatCalculatedPercent, formatNumber } from "./technologyFormat";
 
 const stages = [
@@ -118,7 +118,7 @@ function Weighings({ rows, onEdit, onAdd, onRemove, errors }) {
   );
 }
 
-export default function TechnologyEntry({ options, onSaved }) {
+export default function TechnologyEntry({ options, onProcessingTypeAdded, onSaved }) {
   const [batchMode, setBatchMode] = useState("new");
   const [batch, setBatch] = useState(null);
   const [manual, setManual] = useState(null);
@@ -192,7 +192,10 @@ export default function TechnologyEntry({ options, onSaved }) {
   };
 
   const props = (name, label, extra) => ({ name, label, ...extra, error: errors[name] });
-  const processingChoices = (placeholder) => <SelectOptions items={options.processing_types} placeholder={placeholder} />;
+  const processingPicker = (name, label) => (
+    <ProcessingPicker name={name} label={label} error={errors[name]} items={options.processing_types}
+      onAdded={(item) => { onProcessingTypeAdded(item); clearField(name); }} />
+  );
 
   return (
     <form className="technology-stack" noValidate onSubmit={submit} onChange={(event) => clearField(event.target.name)}>
@@ -230,7 +233,7 @@ export default function TechnologyEntry({ options, onSaved }) {
         }}>Добавить первичную обработку</Choice>
         {preprocessing && (
           <div className="technology-grid">
-            <Field {...props("preprocessing.cpt", "Вид первичной обработки", { required: true, options: processingChoices("Выберите обработку") })} />
+            {processingPicker("preprocessing.cpt", "Вид первичной обработки")}
             <Field {...props("preprocessing.weight_g", "Масса после первичной обработки, г", { required: true, inputMode: "decimal" })} />
             <Choice type="checkbox" name="preprocessing.is_cut">Продукт нарезали</Choice>
           </div>
@@ -242,7 +245,7 @@ export default function TechnologyEntry({ options, onSaved }) {
         }}>Добавить тепловую обработку</Choice>
         {heating && (
           <div className="technology-grid">
-            <Field {...props("heating.cpt", "Способ обработки", { required: true, options: processingChoices("Выберите обработку") })} />
+            {processingPicker("heating.cpt", "Способ обработки")}
             <Field {...props("heating.weight_g", "Масса после нагрева, г", { required: true, inputMode: "decimal" })} />
             <Field {...props("heating.processing_temperature_celsius", "Температура среды при закладке, °C", { hint: "Если известно", inputMode: "decimal" })} />
             <Field {...props("heating.added_water_g", "Добавлено воды, г", { hint: "Если известно", inputMode: "decimal" })} />

@@ -20,6 +20,13 @@ class DictionaryItem(serializers.Serializer):
     name = serializers.CharField()
 
 
+class ProcessingTypeInput(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+
+    def validate_name(self, value):
+        return " ".join(value.split())
+
+
 class SubgroupItem(DictionaryItem):
     product_type_id = serializers.IntegerField()
 

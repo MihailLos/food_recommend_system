@@ -6,6 +6,10 @@ export function getTechnologyOptions(signal) {
   return client.get(`${base}/options/`, { signal }).then(({ data }) => data);
 }
 
+export function createProcessingType(name) {
+  return client.post(`${base}/processing-types/`, { name }).then(({ data }) => data);
+}
+
 export function getTechnologyMatches(path, signal) {
   return client.get(`${base}/${path}`, { signal }).then(({ data }) => data.results ?? data);
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { getTechnologyMatches } from "../../api/technology";
+import { createProcessingType, getTechnologyMatches } from "../../api/technology";
 
 export function Field({ label, hint, required, error, name, options, ...props }) {
   const id = `technology-${name}`;
@@ -30,6 +30,64 @@ export function SelectOptions({ items, placeholder }) {
       <option value="">{placeholder}</option>
       {items.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
     </>
+  );
+}
+
+export function ProcessingPicker({ name, label, error, items, onAdded }) {
+  const [selected, setSelected] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [addError, setAddError] = useState("");
+
+  const add = async () => {
+    if (saving) return;
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      setAddError("Введите название способа обработки.");
+      return;
+    }
+    setSaving(true);
+    setAddError("");
+    try {
+      const item = await createProcessingType(trimmed);
+      onAdded(item);
+      setSelected(item.id);
+      setNewName("");
+      setAdding(false);
+    } catch (error) {
+      setAddError(error.response?.status === 403
+        ? "Нет доступа к добавлению способов обработки."
+        : "Не удалось добавить способ обработки. Попробуйте ещё раз.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="technology-stack">
+      <Field name={name} label={label} required error={error} value={selected}
+        onChange={(event) => setSelected(event.target.value)}
+        options={<SelectOptions items={items} placeholder="Выберите обработку" />} />
+      {adding ? (
+        <>
+          <Field name={`${name}.new`} label="Название нового способа" maxLength={255} autoFocus
+            value={newName} error={addError} onChange={(event) => { setNewName(event.target.value); setAddError(""); }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                add();
+              }
+            }} />
+          <div className="technology-actions">
+            <button type="button" onClick={add} disabled={saving}>{saving ? "Добавление…" : "Добавить в справочник"}</button>
+            <button type="button" onClick={() => { setAdding(false); setAddError(""); }} disabled={saving}>Отмена</button>
+          </div>
+        </>
+      ) : (
+        <div><button type="button" onClick={() => setAdding(true)}>+ Добавить свой способ</button></div>
+      )}
+    </div>
   );
 }
 

@@ -6,6 +6,11 @@ import "./technology.css";
 
 const emptyOptions = { groups: [], subgroups: [], processing_types: [] };
 
+function mergeProcessingTypes(current, incoming) {
+  return [...new Map([...current, ...incoming].map((item) => [item.id, item])).values()]
+    .sort((a, b) => a.name.localeCompare(b.name, "ru") || a.id - b.id);
+}
+
 export default function TechnologyPage() {
   const [tab, setTab] = useState("entry");
   const [options, setOptions] = useState(emptyOptions);
@@ -19,7 +24,10 @@ export default function TechnologyPage() {
     const controller = new AbortController();
     getTechnologyOptions(controller.signal).then((data) => {
       if (controller.signal.aborted) return;
-      setOptions(data);
+      setOptions((current) => ({
+        ...data,
+        processing_types: mergeProcessingTypes(current.processing_types, data.processing_types),
+      }));
       setOptionsState("ready");
     }).catch(() => {
       if (!controller.signal.aborted) setOptionsState("error");
@@ -45,7 +53,12 @@ export default function TechnologyPage() {
         </div>
       )}
       <div hidden={tab !== "entry"}>
-        <TechnologyEntry key={revision} options={options} onSaved={() => {
+        <TechnologyEntry key={revision} options={options} onProcessingTypeAdded={(item) => {
+          setOptions((current) => ({
+            ...current,
+            processing_types: mergeProcessingTypes(current.processing_types, [item]),
+          }));
+        }} onSaved={() => {
           setRevision((value) => value + 1);
           setSaved(true);
           setTab("journal");

@@ -1,11 +1,12 @@
 import React from "react";
 import { fireEvent, render, screen, waitForElementToBeRemoved, within } from "@testing-library/react";
 import {
-  createTechnologyRecord, getTechnologyMatches, getTechnologyOptions, getTechnologyRecord, listTechnologyRecords,
+  createProcessingType, createTechnologyRecord, getTechnologyMatches, getTechnologyOptions, getTechnologyRecord, listTechnologyRecords,
 } from "../../api/technology";
 import TechnologyPage from "./TechnologyPage";
 
 jest.mock("../../api/technology", () => ({
+  createProcessingType: jest.fn(),
   createTechnologyRecord: jest.fn(),
   getTechnologyMatches: jest.fn(),
   getTechnologyOptions: jest.fn(),
@@ -120,4 +121,32 @@ test("adds a result to the selected batch using only the reported percentage", a
     },
     analysis: { stage: "processed", result_mode: "reported", reported_dry_matter_pct: "10.25" },
   });
+});
+
+test("adds a processing type to the shared dictionary and selects it for the record", async () => {
+  createProcessingType.mockResolvedValue({ id: 21, name: "Запекание в фольге" });
+  render(<TechnologyPage />);
+  await waitForElementToBeRemoved(() => screen.queryByText("Загрузка справочников…"));
+  fill("Название продукта", "Картофель");
+  fill("Масса до обработки, г", "180");
+  fireEvent.click(screen.getByLabelText("Добавить тепловую обработку"));
+  fireEvent.click(screen.getByRole("button", { name: /Добавить свой способ/ }));
+  fill("Название нового способа", "  Запекание в фольге ");
+  fireEvent.click(screen.getByRole("button", { name: "Добавить в справочник" }));
+
+  const heating = screen.getByRole("combobox", { name: "Способ обработки" });
+  await within(heating).findByRole("option", { name: "Запекание в фольге" });
+  expect(createProcessingType).toHaveBeenCalledWith("Запекание в фольге");
+  expect(heating).toHaveValue("21");
+  fireEvent.click(screen.getByLabelText("Добавить первичную обработку"));
+  const prep = screen.getByRole("combobox", { name: "Вид первичной обработки" });
+  expect(within(prep).getByRole("option", { name: "Запекание в фольге" })).toBeInTheDocument();
+  fireEvent.click(screen.getByLabelText("Добавить первичную обработку"));
+
+  fill("Масса после нагрева, г", "160");
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить результаты" }));
+  expect(await screen.findByText("Результаты сохранены.")).toBeInTheDocument();
+  expect(createTechnologyRecord).toHaveBeenCalledWith(expect.objectContaining({
+    heating: expect.objectContaining({ cpt: 21 }),
+  }));
 });
