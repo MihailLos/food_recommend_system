@@ -199,3 +199,33 @@ test("filters and sorts the journal, then edits an existing oil analysis", async
     }),
   }));
 });
+
+test("shows one reference percentage and both oil comparisons in the lab details", async () => {
+  const analysis = { ...record.analyses[0], final_dry_matter_without_oil_pct: "8.4" };
+  getTechnologyRecord.mockResolvedValue({
+    ...record, analyses: [],
+    heating: [{
+      id: 12, processing_name: "Пассерование", uses_oil: true, analyses: [analysis],
+    }],
+    reference_comparisons: [{
+      analysis_id: analysis.id, product_name: "Лук репка", applied_steps: ["Пассерование"], skipped_steps: ["Мойка"],
+      sample_weight_g: "49.37", reference_sample_dry_matter_g: "5.18385",
+      reference_pct: "10.5", reason: null,
+      results: [
+        { basis: "with_oil", measured_pct: "11.126", difference_pp: "0.626" },
+        { basis: "without_oil", measured_pct: "8.4", difference_pp: "-2.1" },
+      ],
+    }],
+  });
+  render(<TechnologyPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Внесённые данные" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Открыть запись/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Лабораторные данные" }));
+  expect(screen.getByText("10,50 %")).toBeInTheDocument();
+  expect(screen.getByText(/Применённые этапы · Пассерование/)).toBeInTheDocument();
+  expect(screen.getByText(/Пропущенные этапы без справочного правила · Мойка/)).toBeInTheDocument();
+  expect(screen.getByText(/49,37 г образца · 5,18385 г/)).toBeInTheDocument();
+  const comparisons = within(screen.getByRole("table", { name: "Отклонения от справочного значения" }));
+  expect(comparisons.getByRole("row", { name: /С учётом масла 11,13 \+0,63/ })).toBeInTheDocument();
+  expect(comparisons.getByRole("row", { name: /Без учёта масла 8,40 -2,10/ })).toBeInTheDocument();
+});

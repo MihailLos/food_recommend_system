@@ -4,6 +4,18 @@ import TechnologyEntry from "./TechnologyEntry";
 import { batchName, SelectOptions } from "./TechnologyFields";
 import { formatCalculatedPercent, formatNumber, formatUnit } from "./technologyFormat";
 
+const differenceFormatter = new Intl.NumberFormat("ru-RU", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  signDisplay: "exceptZero",
+});
+
+const comparisonLabels = {
+  measured: "Измеренный результат",
+  with_oil: "С учётом масла",
+  without_oil: "Без учёта масла",
+};
+
 function Facts({ items }) {
   return (
     <dl className="technology-facts">
@@ -51,7 +63,50 @@ function WeighingTable({ parallels, title = "Взвешивания по пар�
   );
 }
 
+function ReferenceComparison({ comparison }) {
+  return (
+    <section className="technology-subsection">
+      <h4>Сравнение со справочником</h4>
+      {comparison.product_name && <p>Справочный продукт · {comparison.product_name}</p>}
+      {comparison.applied_steps.length > 0 && <p>Применённые этапы · {comparison.applied_steps.join(" → ")}</p>}
+      {comparison.skipped_steps?.length > 0 && <p>Пропущенные этапы без справочного правила · {comparison.skipped_steps.join(", ")}</p>}
+      {comparison.reason ? (
+        <p>Сравнение недоступно. {comparison.reason}</p>
+      ) : (
+        <>
+          <p>Справочная массовая доля сухих веществ · <strong>{formatCalculatedPercent(comparison.reference_pct, " %")}</strong></p>
+          {comparison.reference_sample_dry_matter_g != null && (
+            <p>Справочная масса сухих веществ на {formatUnit(comparison.sample_weight_g, "г")} образца ·{" "}
+              {formatUnit(comparison.reference_sample_dry_matter_g, "г")}</p>
+          )}
+          <div className="technology-table-wrap">
+            <table className="technology-table" aria-label="Отклонения от справочного значения">
+              <thead>
+                <tr>
+                  <th scope="col">Лабораторный результат</th>
+                  <th scope="col" className="technology-number">Сухие вещества, %</th>
+                  <th scope="col" className="technology-number">Отклонение, п. п.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparison.results.map(({ basis, measured_pct, difference_pp }) => (
+                  <tr key={basis}>
+                    <th scope="row">{comparisonLabels[basis]}</th>
+                    <td className="technology-number">{formatCalculatedPercent(measured_pct)}</td>
+                    <td className="technology-number">{differenceFormatter.format(Number(difference_pp))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function AnalysisResults({ record }) {
+  const comparisons = new Map((record.reference_comparisons ?? []).map((comparison) => [comparison.analysis_id, comparison]));
   const groups = [
     { key: "raw", name: "Без обработки", analyses: record.analyses },
     ...record.preprocessing.map((part) => ({ key: `prep-${part.id}`,
@@ -92,6 +147,7 @@ function AnalysisResults({ record }) {
               </details>
             </>
           )}
+          {comparisons.has(analysis.id) && <ReferenceComparison comparison={comparisons.get(analysis.id)} />}
         </div>
       ))}
     </section>

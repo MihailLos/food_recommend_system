@@ -294,3 +294,28 @@ class RecordDetailsSerializer(RecordSerializer):
 
     class Meta(RecordSerializer.Meta):
         fields = (*RecordSerializer.Meta.fields, "edit_version", "editable")
+
+
+class ReferenceDifferenceSerializer(serializers.Serializer):
+    basis = serializers.ChoiceField(choices=("measured", "with_oil", "without_oil"))
+    measured_pct = serializers.DecimalField(max_digits=15, decimal_places=12)
+    difference_pp = serializers.DecimalField(max_digits=15, decimal_places=12)
+
+
+class ReferenceComparisonSerializer(serializers.Serializer):
+    analysis_id = serializers.IntegerField()
+    product_name = serializers.CharField(allow_null=True)
+    applied_steps = serializers.ListField(child=serializers.CharField())
+    skipped_steps = serializers.ListField(child=serializers.CharField())
+    reference_pct = serializers.DecimalField(max_digits=15, decimal_places=12, allow_null=True)
+    sample_weight_g = serializers.DecimalField(max_digits=14, decimal_places=6)
+    reference_sample_dry_matter_g = serializers.DecimalField(max_digits=20, decimal_places=12, allow_null=True)
+    reason = serializers.CharField(allow_null=True)
+    results = ReferenceDifferenceSerializer(many=True)
+
+
+class RecordWithComparisonsSerializer(RecordDetailsSerializer):
+    reference_comparisons = ReferenceComparisonSerializer(many=True, read_only=True)
+
+    class Meta(RecordDetailsSerializer.Meta):
+        fields = (*RecordDetailsSerializer.Meta.fields, "reference_comparisons")

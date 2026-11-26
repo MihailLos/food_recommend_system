@@ -17,9 +17,11 @@ from .models import (
     ProcessedProductData, ProcessingType, UnprocessedProductData,
 )
 from .records import edit_parts, record_details, record_queryset, update_record
+from .reference_comparison import build_reference_comparisons
 from .serializers import (
     BatchSerializer, DictionaryItem, JournalFilterOptions, ProcessingTypeInput, RecordDetailsSerializer,
-    RecordEditInput, RecordInput, RecordSerializer, TechnologyOptions,
+    RecordEditInput, RecordInput, RecordSerializer, RecordWithComparisonsSerializer,
+    ReferenceComparisonSerializer, TechnologyOptions,
 )
 
 
@@ -114,8 +116,12 @@ class RecordDetailView(RetrieveAPIView):
     def get_queryset(self):
         return record_queryset(details=True)
 
+    @extend_schema(responses=RecordWithComparisonsSerializer)
     def retrieve(self, request, *args, **kwargs):
-        return Response(record_details(self.get_object()))
+        record = self.get_object()
+        data = record_details(record)
+        data["reference_comparisons"] = ReferenceComparisonSerializer(build_reference_comparisons(record), many=True).data
+        return Response(data)
 
     @extend_schema(request=RecordEditInput, responses=RecordDetailsSerializer)
     @transaction.atomic
